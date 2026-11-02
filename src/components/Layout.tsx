@@ -12,7 +12,7 @@ export function Layout({
   return (
     <>
       <Head>
-        <title>{title} · SmartBord</title>
+        <title>{`${title} · SmartBord`}</title>
         <meta
           name="description"
           content="Your SmartBord account. Your lecture recordings stay on your device."

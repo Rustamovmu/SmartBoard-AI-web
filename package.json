@@ -3,13 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
     "build": "next build",
     "start": "next start",
-    "check": "tsc --noEmit --incremental false",
+    "check": "tsc --noEmit --incremental false --project tsconfig.check.json",
     "lint": "oxlint src scripts next.config.ts",
     "test:web": "node scripts/verify-auth.mjs",
-    "dev:https": "WEB_DEV=1 node --env-file-if-exists=.env.local scripts/https-server.mjs"
+    "dev:https": "yarn dev",
+    "dev:http": "next dev --hostname 127.0.0.1",
+    "setup:https": "node scripts/setup-https.mjs"
   },
   "dependencies": {
     "next": "16.4.4",

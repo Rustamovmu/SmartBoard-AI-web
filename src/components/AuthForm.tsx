@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { errorMessage, signIn } from "@/auth/client";
+import { webOrigin } from "@/auth/config";
 import { Layout } from "./Layout";
 
 export function AuthForm({ mode }: { mode: "signup" | "login" }) {
@@ -9,6 +10,10 @@ export function AuthForm({ mode }: { mode: "signup" | "login" }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [securePage, setSecurePage] = useState<boolean | null>(null);
+  useEffect(() => {
+    setSecurePage(window.location.origin === webOrigin());
+  }, []);
   const busy = useRef(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -76,6 +81,15 @@ export function AuthForm({ mode }: { mode: "signup" | "login" }) {
               ? "Create your account. Keep your learning yours."
               : "A fresh session. The same space to learn."}
           </p>
+          {securePage === false && (
+            <p role="alert" className="error">
+              Open the secure {signup ? "signup" : "login"} page before entering
+              your details.{" "}
+              <a className="text-link" href={`${webOrigin()}/${mode}`}>
+                Continue to HTTPS
+              </a>
+            </p>
+          )}
           {!signup && router.query.session === "ended" && (
             <p role="status" className="session-notice">
               Your session ended or could not be restored. Please log in again.
@@ -87,7 +101,7 @@ export function AuthForm({ mode }: { mode: "signup" | "login" }) {
             </p>
           )}
           <form onSubmit={submit} aria-busy={pending}>
-            <fieldset disabled={pending}>
+            <fieldset disabled={pending || securePage !== true}>
               {signup && (
                 <label>
                   Full name

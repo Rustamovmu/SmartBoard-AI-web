@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const api = process.env.NEXT_PUBLIC_AUTH_API_ORIGIN || "https://localhost:4000";
 const nextConfig: NextConfig = {
+  distDir: process.env.SMARTBORD_NEXT_DIST_DIR || ".next",
   reactCompiler: true,
   reactStrictMode: true,
   poweredByHeader: false,

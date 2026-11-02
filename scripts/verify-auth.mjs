@@ -7,8 +7,11 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { X509Certificate, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { setDefaultCACertificates, getCACertificates } from "node:tls";
 import { chromium, expect } from "@playwright/test";
+import { localTls } from "./local-https.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const backend = resolve(
@@ -18,14 +21,16 @@ if (process.platform !== "darwin")
   throw new Error(
     "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
   );
-if (!process.argv.includes("--trust-local-ca"))
+const development = process.argv.includes("--dev");
+const existingTls = process.argv.includes("--local-cert") ? localTls() : null;
+if (!existingTls && !process.argv.includes("--trust-local-ca"))
   throw new Error(
     "Pass --trust-local-ca to allow temporary localhost-only user certificate trust, removed in finally.",
   );
 const temp = mkdtempSync(join(tmpdir(), "smartbord-browser-auth-"));
-const ca = join(temp, "ca.pem"),
-  cert = join(temp, "localhost.pem"),
-  key = join(temp, "localhost-key.pem");
+const ca = existingTls?.ca || join(temp, "ca.pem"),
+  cert = existingTls?.cert || join(temp, "localhost.pem"),
+  key = existingTls?.key || join(temp, "localhost-key.pem");
 const keychain = join(process.env.HOME, "Library/Keychains/login.keychain-db");
 let backendHost,
   webHost,
@@ -120,79 +125,80 @@ process.once("SIGINT", () => abort.abort());
 process.once("SIGTERM", () => abort.abort());
 
 try {
-  run("openssl", [
-    "req",
-    "-x509",
-    "-newkey",
-    "rsa:2048",
-    "-nodes",
-    "-days",
-    "1",
-    "-subj",
-    "/CN=SmartBord temporary localhost test CA",
-    "-addext",
-    "basicConstraints=critical,CA:TRUE",
-    "-addext",
-    "keyUsage=critical,keyCertSign,cRLSign",
-    "-addext",
-    "nameConstraints=critical,permitted;DNS:localhost,permitted;IP:127.0.0.1/255.255.255.255",
-    "-keyout",
-    join(temp, "ca-key.pem"),
-    "-out",
-    ca,
-  ]);
-  run("openssl", [
-    "req",
-    "-new",
-    "-newkey",
-    "rsa:2048",
-    "-nodes",
-    "-subj",
-    "/CN=localhost",
-    "-keyout",
-    key,
-    "-out",
-    join(temp, "localhost.csr"),
-  ]);
-  writeFileSync(
-    join(temp, "extensions.cnf"),
-    "subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n",
-  );
-  run("openssl", [
-    "x509",
-    "-req",
-    "-days",
-    "1",
-    "-in",
-    join(temp, "localhost.csr"),
-    "-CA",
-    ca,
-    "-CAkey",
-    join(temp, "ca-key.pem"),
-    "-CAcreateserial",
-    "-extfile",
-    join(temp, "extensions.cnf"),
-    "-out",
-    cert,
-  ]);
-  fingerprint = new X509Certificate(readFileSync(ca)).fingerprint256.replaceAll(
-    ":",
-    "",
-  );
-  // Trust only localhost TLS; no system-wide/admin trust and no browser flags
-  // that ignore certificate errors. The exact temporary cert is removed below.
-  imported = true;
-  run("security", [
-    "add-trusted-cert",
-    "-r",
-    "trustRoot",
-    "-p",
-    "ssl",
-    "-k",
-    keychain,
-    ca,
-  ]);
-  trusted = true;
+  if (!existingTls) {
+    run("openssl", [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-days",
+      "1",
+      "-subj",
+      "/CN=SmartBord temporary localhost test CA",
+      "-addext",
+      "basicConstraints=critical,CA:TRUE",
+      "-addext",
+      "keyUsage=critical,keyCertSign,cRLSign",
+      "-addext",
+      "nameConstraints=critical,permitted;DNS:localhost,permitted;IP:127.0.0.1/255.255.255.255",
+      "-keyout",
+      join(temp, "ca-key.pem"),
+      "-out",
+      ca,
+    ]);
+    run("openssl", [
+      "req",
+      "-new",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-subj",
+      "/CN=localhost",
+      "-keyout",
+      key,
+      "-out",
+      join(temp, "localhost.csr"),
+    ]);
+    writeFileSync(
+      join(temp, "extensions.cnf"),
+      "subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n",
+    );
+    run("openssl", [
+      "x509",
+      "-req",
+      "-days",
+      "1",
+      "-in",
+      join(temp, "localhost.csr"),
+      "-CA",
+      ca,
+      "-CAkey",
+      join(temp, "ca-key.pem"),
+      "-CAcreateserial",
+      "-extfile",
+      join(temp, "extensions.cnf"),
+      "-out",
+      cert,
+    ]);
+    fingerprint = new X509Certificate(
+      readFileSync(ca),
+    ).fingerprint256.replaceAll(":", "");
+    // Trust only localhost TLS; no system-wide/admin trust and no browser flags
+    // that ignore certificate errors. The exact temporary cert is removed below.
+    imported = true;
+    run("security", [
+      "add-trusted-cert",
+      "-r",
+      "trustRoot",
+      "-p",
+      "ssl",
+      "-k",
+      keychain,
+      ca,
+    ]);
+    trusted = true;
+  }
   setDefaultCACertificates([
     ...getCACertificates("default"),
     readFileSync(ca, "utf8"),
@@ -203,6 +209,7 @@ try {
     AUTH_BROWSER_ORIGINS: webOrigin,
     BROWSER_TEST_CERT: cert,
     BROWSER_TEST_KEY: key,
+    BROWSER_TEST_HTTP: development ? "1" : "0",
   };
   backendHost = fork(join(backend, "scripts/browser-auth-host.ts"), [], {
     cwd: backend,
@@ -215,37 +222,59 @@ try {
   backendHost.stderr.resume();
   const ready = await message(backendHost, "ready");
   assert.match(ready.database, /^sbt_[a-f0-9]{32}$/);
+  const apiOrigin = development
+    ? `https://localhost:${await freePort()}`
+    : ready.origin;
   const webEnv = {
     ...process.env,
     NEXT_PUBLIC_WEB_ORIGIN: webOrigin,
-    NEXT_PUBLIC_AUTH_API_ORIGIN: ready.origin,
+    NEXT_PUBLIC_AUTH_API_ORIGIN: apiOrigin,
+    SMARTBORD_API_HTTP_ORIGIN: ready.origin,
+    ...(development
+      ? { SMARTBORD_NEXT_DIST_DIR: ".next/auth-dev-verification" }
+      : {}),
     NODE_EXTRA_CA_CERTS: ca,
     WEB_TLS_CERT: cert,
     WEB_TLS_KEY: key,
     NEXT_TELEMETRY_DISABLED: "1",
   };
-  console.log("Building web app for the isolated HTTPS origins…");
-  await new Promise((done, reject) => {
-    const child = spawn("yarn", ["build"], {
+  if (!development) {
+    console.log("Building web app for the isolated HTTPS origins…");
+    await new Promise((done, reject) => {
+      const child = spawn("yarn", ["build"], {
+        cwd: root,
+        env: webEnv,
+        stdio: "inherit",
+      });
+      children.add(child);
+      child.once("error", reject);
+      child.once("exit", (code) => {
+        children.delete(child);
+        if (code === 0) done();
+        else reject(new Error("Web build failed"));
+      });
+    });
+  }
+  webHost = fork(
+    join(root, development ? "scripts/dev.mjs" : "scripts/https-server.mjs"),
+    [],
+    {
       cwd: root,
       env: webEnv,
-      stdio: "inherit",
-    });
-    children.add(child);
-    child.once("error", reject);
-    child.once("exit", (code) => {
-      children.delete(child);
-      if (code === 0) done();
-      else reject(new Error("Web build failed"));
-    });
-  });
-  webHost = fork(join(root, "scripts/https-server.mjs"), [], {
-    cwd: root,
-    env: webEnv,
-    stdio: ["pipe", "pipe", "pipe", "ipc"],
-  });
-  webHost.stdout.resume();
-  webHost.stderr.resume();
+      stdio: ["pipe", "pipe", "pipe", "ipc"],
+    },
+  );
+  const devWarnings = [];
+  const inspect = (chunk) => {
+    if (
+      /children.*prop.*title|Hydration failed|hydration mismatch/i.test(
+        chunk.toString(),
+      )
+    )
+      devWarnings.push("React title/hydration warning");
+  };
+  webHost.stdout.on("data", inspect);
+  webHost.stderr.on("data", inspect);
   await message(webHost, "ready");
   browser = await chromium.launch({ channel: "chromium" }); // strict certificate verification, default flags
   const context = await browser.newContext({ ignoreHTTPSErrors: false });
@@ -253,7 +282,15 @@ try {
   qaPage = page;
   const errors = [];
   page.on("pageerror", () => errors.push("Browser runtime error"));
-  const api = ready.origin;
+  page.on("console", (message) => {
+    if (
+      /children.*prop.*title|Hydration failed|hydration mismatch/i.test(
+        message.text(),
+      )
+    )
+      errors.push("React title/hydration warning");
+  });
+  const api = apiOrigin;
   const email = `web-${randomUUID()}@example.test`,
     password = `Synthetic-${randomUUID()}`;
   let userId, oldCookies;
@@ -282,6 +319,7 @@ try {
     async () => {
       const response = await page.goto(`${webOrigin}/`);
       assert.equal(response.status(), 200);
+      await expect(page).toHaveTitle("A clearer space to learn · SmartBord");
       assert.equal(await page.evaluate(() => window.isSecureContext), true);
       await expect(
         page.getByRole("heading", { name: /Good ideas/ }),
@@ -315,6 +353,7 @@ try {
         403,
       );
       await page.goto(`${webOrigin}/signup`);
+      await expect(page).toHaveTitle("Create an account · SmartBord");
       await page.getByLabel("Full name").fill("Synthetic Browser Member");
       await page.getByLabel("Email address").fill(email);
       await page.getByLabel("Password", { exact: true }).fill(password);
@@ -514,15 +553,19 @@ try {
         const transport = await browser.newContext();
         try {
           rotationStatus = (
-            await transport.request.fetch(route.request())
+            await transport.request.fetch(route.request(), { timeout: 8_000 })
           ).status();
+        } catch {
+          rotationStatus = 0;
         } finally {
-          await transport.close();
-          await route.abort();
+          await transport.close().catch(() => {});
+          await route.abort().catch(() => {});
         }
       });
       await page.reload();
-      await expect(page).toHaveURL(/\/login\?session=ended$/);
+      await expect(page).toHaveURL(/\/login\?session=ended$/, {
+        timeout: 30_000,
+      });
       assert.equal(rotationStatus, 200);
       assert.equal(
         await page.evaluate(() =>
@@ -551,7 +594,9 @@ try {
       );
       await fixture("block", userId);
       await page.reload();
-      await expect(page).toHaveURL(/\/login\?session=ended$/);
+      await expect(page).toHaveURL(/\/login\?session=ended$/, {
+        timeout: 30_000,
+      });
       assert.equal((await page.content()).includes(email), false);
     },
   );
@@ -580,10 +625,53 @@ try {
       await unsupported.close();
     },
   );
+  await check(
+    "HTTP signup is disabled before credentials and links to the HTTPS page",
+    async () => {
+      const plaintext = createHttpServer((incoming, outgoing) => {
+        const forwarded = httpsRequest(
+          `${webOrigin}${incoming.url}`,
+          (response) => {
+            outgoing.writeHead(response.statusCode || 502, response.headers);
+            response.pipe(outgoing);
+          },
+        );
+        forwarded.on("error", () => {
+          outgoing.writeHead(502);
+          outgoing.end();
+        });
+        incoming.pipe(forwarded);
+      });
+      const anonymous = await browser.newContext();
+      try {
+        await new Promise((done) => plaintext.listen(0, "127.0.0.1", done));
+        const insecure = await anonymous.newPage();
+        await insecure.goto(
+          `http://127.0.0.1:${plaintext.address().port}/signup`,
+        );
+        await expect(
+          insecure.getByRole("main").getByRole("alert"),
+        ).toContainText("Open the secure signup page");
+        await expect(
+          insecure.getByRole("button", { name: "Create account" }),
+        ).toBeDisabled();
+        await expect(insecure.getByLabel("Email address")).toBeDisabled();
+        await expect(
+          insecure.getByRole("link", { name: "Continue to HTTPS" }),
+        ).toHaveAttribute("href", `${webOrigin}/signup`);
+        await expect(insecure).toHaveTitle("Create an account · SmartBord");
+      } finally {
+        await anonymous.close();
+        plaintext.closeAllConnections();
+        await new Promise((done) => plaintext.close(done));
+      }
+    },
+  );
   assert.deepEqual(errors, []);
+  assert.deepEqual(devWarnings, []);
   if (abort.signal.aborted) interrupted();
   console.log(
-    `Verified ${checks.length} real browser scenarios. Screenshots: ${temp}`,
+    `Verified ${checks.length} real browser scenarios (${development ? "development launcher + HTTPS API bridge" : "production build"}). Screenshots: ${temp}`,
   );
   // Optional screenshot export is synthetic UI only, never account credentials.
   if (process.env.AUTH_QA_SCREENSHOTS) {
@@ -607,6 +695,7 @@ try {
       .catch(() => {});
   }
 } finally {
+  await qaPage?.unrouteAll({ behavior: "wait" }).catch(() => {});
   await browser?.close();
   await stop(webHost);
   for (const child of children) await stop(child);
@@ -634,7 +723,7 @@ try {
     rmSync(temp, { recursive: true, force: true });
   }
   console.log(
-    `Cleanup: temporary hosts stopped; CA cleanup confirmed: ${!certificateCleanupFailed}; temporary keys/files removed; disposable database removal confirmed: ${cleanupConfirmed}.`,
+    `Cleanup: temporary hosts stopped; test-owned CA cleanup confirmed: ${!certificateCleanupFailed}; temporary files removed; existing development certificate preserved: ${!!existingTls}; disposable database removal confirmed: ${cleanupConfirmed}.`,
   );
 }
 if (certificateCleanupFailed)
