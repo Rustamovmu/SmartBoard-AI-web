@@ -1,0 +1,656 @@
+// Real browser + actual Nest app + real disposable MongoDB. No TLS bypass.
+import assert from "node:assert/strict";
+import { fork, spawn, execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { X509Certificate, randomUUID } from "node:crypto";
+import { createServer } from "node:net";
+import { setDefaultCACertificates, getCACertificates } from "node:tls";
+import { chromium, expect } from "@playwright/test";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const backend = resolve(
+  process.env.SMARTBORD_BACKEND_PATH || join(root, "../SmartBord-AI"),
+);
+if (process.platform !== "darwin")
+  throw new Error(
+    "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
+  );
+if (!process.argv.includes("--trust-local-ca"))
+  throw new Error(
+    "Pass --trust-local-ca to allow temporary localhost-only user certificate trust, removed in finally.",
+  );
+const temp = mkdtempSync(join(tmpdir(), "smartbord-browser-auth-"));
+const ca = join(temp, "ca.pem"),
+  cert = join(temp, "localhost.pem"),
+  key = join(temp, "localhost-key.pem");
+const keychain = join(process.env.HOME, "Library/Keychains/login.keychain-db");
+let backendHost,
+  webHost,
+  browser,
+  trusted = false,
+  imported = false;
+let fingerprint;
+let cleanupConfirmed = false;
+let verificationError;
+let certificateCleanupFailed = false;
+let qaPage;
+const children = new Set();
+const checks = [];
+let activeCheck = "TLS/fixture/build setup";
+function run(file, args, options = {}) {
+  execFileSync(file, args, { stdio: "pipe", ...options });
+}
+function message(child, kind, timeout = 60_000) {
+  return new Promise((resolvePromise, reject) => {
+    const timer = setTimeout(
+      () => finish(new Error(`Timed out waiting for ${kind}`)),
+      timeout,
+    );
+    function received(data) {
+      if (data.kind === kind) finish(null, data);
+    }
+    function exited() {
+      finish(new Error(`Host exited before ${kind}`));
+    }
+    function finish(error, data) {
+      clearTimeout(timer);
+      child.off("message", received);
+      child.off("exit", exited);
+      if (error) reject(error);
+      else resolvePromise(data);
+    }
+    child.on("message", received);
+    child.once("exit", exited);
+  });
+}
+function exited(child) {
+  if (child.exitCode !== null || child.signalCode !== null)
+    return Promise.resolve();
+  return new Promise((resolvePromise) => child.once("exit", resolvePromise));
+}
+async function stop(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const done = exited(child);
+  child.kill("SIGTERM");
+  const timer = setTimeout(() => child.kill("SIGKILL"), 20_000);
+  await done;
+  clearTimeout(timer);
+}
+async function freePort() {
+  const server = createServer();
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const port = server.address().port;
+  await new Promise((done) => server.close(done));
+  return port;
+}
+async function fixture(kind, userId) {
+  const id = randomUUID();
+  const done = new Promise((resolvePromise, reject) => {
+    const timer = setTimeout(() => {
+      backendHost.off("message", listener);
+      reject(new Error("Fixture command timeout"));
+    }, 10_000);
+    function listener(data) {
+      if (data.id !== id) return;
+      clearTimeout(timer);
+      backendHost.off("message", listener);
+      if (data.kind === "done") resolvePromise();
+      else reject(new Error("Fixture command rejected"));
+    }
+    backendHost.on("message", listener);
+  });
+  backendHost.send({ kind, userId, id });
+  await done;
+}
+async function check(name, action) {
+  activeCheck = name;
+  await action();
+  checks.push(name);
+  console.log(`PASS ${name}`);
+}
+const interrupted = () => {
+  throw new Error("Verification interrupted");
+};
+// Signals cause the same awaited cleanup as a failed assertion.
+const abort = new AbortController();
+process.once("SIGINT", () => abort.abort());
+process.once("SIGTERM", () => abort.abort());
+
+try {
+  run("openssl", [
+    "req",
+    "-x509",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-days",
+    "1",
+    "-subj",
+    "/CN=SmartBord temporary localhost test CA",
+    "-addext",
+    "basicConstraints=critical,CA:TRUE",
+    "-addext",
+    "keyUsage=critical,keyCertSign,cRLSign",
+    "-addext",
+    "nameConstraints=critical,permitted;DNS:localhost,permitted;IP:127.0.0.1/255.255.255.255",
+    "-keyout",
+    join(temp, "ca-key.pem"),
+    "-out",
+    ca,
+  ]);
+  run("openssl", [
+    "req",
+    "-new",
+    "-newkey",
+    "rsa:2048",
+    "-nodes",
+    "-subj",
+    "/CN=localhost",
+    "-keyout",
+    key,
+    "-out",
+    join(temp, "localhost.csr"),
+  ]);
+  writeFileSync(
+    join(temp, "extensions.cnf"),
+    "subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n",
+  );
+  run("openssl", [
+    "x509",
+    "-req",
+    "-days",
+    "1",
+    "-in",
+    join(temp, "localhost.csr"),
+    "-CA",
+    ca,
+    "-CAkey",
+    join(temp, "ca-key.pem"),
+    "-CAcreateserial",
+    "-extfile",
+    join(temp, "extensions.cnf"),
+    "-out",
+    cert,
+  ]);
+  fingerprint = new X509Certificate(readFileSync(ca)).fingerprint256.replaceAll(
+    ":",
+    "",
+  );
+  // Trust only localhost TLS; no system-wide/admin trust and no browser flags
+  // that ignore certificate errors. The exact temporary cert is removed below.
+  imported = true;
+  run("security", [
+    "add-trusted-cert",
+    "-r",
+    "trustRoot",
+    "-p",
+    "ssl",
+    "-k",
+    keychain,
+    ca,
+  ]);
+  trusted = true;
+  setDefaultCACertificates([
+    ...getCACertificates("default"),
+    readFileSync(ca, "utf8"),
+  ]);
+  const webOrigin = `https://localhost:${await freePort()}`;
+  const env = {
+    ...process.env,
+    AUTH_BROWSER_ORIGINS: webOrigin,
+    BROWSER_TEST_CERT: cert,
+    BROWSER_TEST_KEY: key,
+  };
+  backendHost = fork(join(backend, "scripts/browser-auth-host.ts"), [], {
+    cwd: backend,
+    env,
+    execArgv: ["-r", "ts-node/register"],
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
+  });
+  // Static backend diagnostics only; never relay raw configuration/errors.
+  backendHost.stdout.resume();
+  backendHost.stderr.resume();
+  const ready = await message(backendHost, "ready");
+  assert.match(ready.database, /^sbt_[a-f0-9]{32}$/);
+  const webEnv = {
+    ...process.env,
+    NEXT_PUBLIC_WEB_ORIGIN: webOrigin,
+    NEXT_PUBLIC_AUTH_API_ORIGIN: ready.origin,
+    NODE_EXTRA_CA_CERTS: ca,
+    WEB_TLS_CERT: cert,
+    WEB_TLS_KEY: key,
+    NEXT_TELEMETRY_DISABLED: "1",
+  };
+  console.log("Building web app for the isolated HTTPS origins…");
+  await new Promise((done, reject) => {
+    const child = spawn("yarn", ["build"], {
+      cwd: root,
+      env: webEnv,
+      stdio: "inherit",
+    });
+    children.add(child);
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      children.delete(child);
+      if (code === 0) done();
+      else reject(new Error("Web build failed"));
+    });
+  });
+  webHost = fork(join(root, "scripts/https-server.mjs"), [], {
+    cwd: root,
+    env: webEnv,
+    stdio: ["pipe", "pipe", "pipe", "ipc"],
+  });
+  webHost.stdout.resume();
+  webHost.stderr.resume();
+  await message(webHost, "ready");
+  browser = await chromium.launch({ channel: "chromium" }); // strict certificate verification, default flags
+  const context = await browser.newContext({ ignoreHTTPSErrors: false });
+  const page = await context.newPage();
+  qaPage = page;
+  const errors = [];
+  page.on("pageerror", () => errors.push("Browser runtime error"));
+  const api = ready.origin;
+  const email = `web-${randomUUID()}@example.test`,
+    password = `Synthetic-${randomUUID()}`;
+  let userId, oldCookies;
+  const call = (path, body, extra = {}) =>
+    page.evaluate(
+      async ({ api, path, body, extra }) => {
+        const response = await fetch(`${api}/auth/${path}`, {
+          method: body === undefined ? "GET" : "POST",
+          credentials: "include",
+          headers: {
+            "X-SmartBord-Client": "browser",
+            ...(body === undefined
+              ? {}
+              : { "Content-Type": "application/json" }),
+            ...extra,
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        return { status: response.status, data: await response.json() };
+      },
+      { api, path, body, extra },
+    );
+
+  await check(
+    "Trusted HTTPS, responsive layout and anonymous account protection",
+    async () => {
+      const response = await page.goto(`${webOrigin}/`);
+      assert.equal(response.status(), 200);
+      assert.equal(await page.evaluate(() => window.isSecureContext), true);
+      await expect(
+        page.getByRole("heading", { name: /Good ideas/ }),
+      ).toBeVisible();
+      await page.screenshot({ path: join(temp, "home-desktop.png") });
+      await page.goto(`${webOrigin}/account`);
+      await expect(page).toHaveURL(`${webOrigin}/login`);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+      assert.equal(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+        true,
+      );
+      await page.screenshot({ path: join(temp, "login-mobile.png") });
+      await page.setViewportSize({ width: 1440, height: 1000 });
+    },
+  );
+  await check(
+    "Signup rejects missing CSRF; genuine signup creates USER and secure browser cookies",
+    async () => {
+      assert.equal(
+        (
+          await call("signup", {
+            email,
+            name: "Synthetic Browser Member",
+            password,
+          })
+        ).status,
+        403,
+      );
+      await page.goto(`${webOrigin}/signup`);
+      await page.getByLabel("Full name").fill("Synthetic Browser Member");
+      await page.getByLabel("Email address").fill(email);
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      const grantResponse = page.waitForResponse(
+        (r) =>
+          r.url() === `${api}/auth/signup` && r.request().method() === "POST",
+      );
+      await page.getByRole("button", { name: "Create account" }).click();
+      const grant = await (await grantResponse).json();
+      assert.equal(grant.user.role, "USER");
+      userId = grant.user.id;
+      assert.equal("accessToken" in grant || "refreshToken" in grant, false);
+      await expect(page).toHaveURL(`${webOrigin}/account`);
+      await expect(
+        page.getByRole("heading", { name: "Synthetic Browser Member" }),
+      ).toBeVisible();
+      oldCookies = await context.cookies();
+      for (const name of [
+        "__Host-sb_access",
+        "__Host-sb_refresh",
+        "__Host-sb_csrf",
+      ]) {
+        const cookie = oldCookies.find((c) => c.name === name);
+        assert.ok(
+          cookie &&
+            cookie.secure &&
+            cookie.httpOnly &&
+            cookie.sameSite === "Strict" &&
+            cookie.path === "/" &&
+            cookie.domain === "localhost",
+        );
+      }
+      assert.equal(
+        await page.evaluate(() => document.cookie.includes("__Host-sb_")),
+        false,
+      );
+      assert.equal(
+        await page.evaluate(() =>
+          JSON.stringify({ ...localStorage, ...sessionStorage }).includes(
+            "Synthetic-",
+          ),
+        ),
+        false,
+      );
+      const ssr = await context.request.get(`${webOrigin}/account`);
+      assert.match(ssr.headers()["cache-control"], /no-store/);
+      assert.ok((await ssr.text()).includes(email));
+      const other = await browser.newContext();
+      const isolated = await other.request.get(`${webOrigin}/account`, {
+        maxRedirects: 0,
+      });
+      assert.equal(isolated.status(), 307);
+      assert.equal((await isolated.text()).includes(email), false);
+      await other.close();
+      await page.screenshot({ path: join(temp, "account-desktop.png") });
+    },
+  );
+  await check("Wrong CSRF and disallowed origins are rejected", async () => {
+    assert.equal(
+      (await call("logout", {}, { "X-CSRF-Token": "wrong" })).status,
+      403,
+    );
+    const csrf = (await call("csrf")).data.csrfToken;
+    const response = await context.request.post(`${api}/auth/logout`, {
+      headers: {
+        Origin: "https://untrusted.example",
+        "X-SmartBord-Client": "browser",
+        "X-CSRF-Token": csrf,
+      },
+      data: {},
+    });
+    assert.equal(response.status(), 403);
+  });
+  await check(
+    "Expired access refreshes once across two tabs; old access and refresh are rotated",
+    async () => {
+      await fixture("expire-access", userId);
+      const tabs = [page, await context.newPage()];
+      let rotations = 0;
+      context.on("request", (request) => {
+        if (
+          request.url() === `${api}/auth/refresh` &&
+          request.method() === "POST"
+        )
+          rotations++;
+      });
+      await Promise.all(tabs.map((tab) => tab.goto(`${webOrigin}/account`)));
+      await Promise.all(
+        tabs.map((tab) =>
+          expect(
+            tab.getByRole("heading", { name: "Synthetic Browser Member" }),
+          ).toBeVisible(),
+        ),
+      );
+      assert.equal(rotations, 1);
+      const cookies = await context.cookies();
+      for (const name of ["__Host-sb_access", "__Host-sb_refresh"])
+        assert.notEqual(
+          cookies.find((c) => c.name === name).value,
+          oldCookies.find((c) => c.name === name).value,
+        );
+      const stale = await browser.newContext();
+      await stale.addCookies(oldCookies);
+      const response = await stale.request.get(`${api}/auth/me`, {
+        headers: { Origin: webOrigin, "X-SmartBord-Client": "browser" },
+      });
+      assert.equal(response.status(), 401);
+      await stale.close();
+      await tabs[1].close();
+    },
+  );
+  await check(
+    "Backend outage hides account data and offers retry",
+    async () => {
+      await page.route(`${api}/auth/**`, (route) => route.abort());
+      await page.reload();
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(
+        "Unable to reach SmartBord",
+      );
+      await expect(
+        page.getByRole("heading", { name: "Synthetic Browser Member" }),
+      ).toHaveCount(0);
+      await page.unroute(`${api}/auth/**`);
+      await page.getByRole("button", { name: "Retry account check" }).click();
+      await expect(
+        page.getByRole("heading", { name: "Synthetic Browser Member" }),
+      ).toBeVisible();
+    },
+  );
+  await check(
+    "Logout clears cookies, revokes the real session and updates another tab",
+    async () => {
+      const tab = await context.newPage();
+      await tab.goto(`${webOrigin}/account`);
+      await expect(
+        tab.getByRole("heading", { name: "Synthetic Browser Member" }),
+      ).toBeVisible();
+      const before = await context.cookies();
+      await page.route(`${api}/auth/logout`, (route) => route.abort());
+      await page.getByRole("button", { name: "Log out" }).click();
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(
+        "Unable to reach SmartBord",
+      );
+      await expect(
+        page.getByRole("heading", { name: "Synthetic Browser Member" }),
+      ).toBeVisible();
+      await expect(page).toHaveURL(`${webOrigin}/account`);
+      await page.unroute(`${api}/auth/logout`);
+      await page.getByRole("button", { name: "Log out" }).click();
+      await expect(page).toHaveURL(/\/login\?session=logged-out$/);
+      await expect(tab).toHaveURL(/\/login\?session=ended$/);
+      assert.equal(
+        (await context.cookies()).some(
+          (c) =>
+            c.name === "__Host-sb_access" || c.name === "__Host-sb_refresh",
+        ),
+        false,
+      );
+      const stale = await browser.newContext();
+      await stale.addCookies(before);
+      assert.equal(
+        (
+          await stale.request.get(`${api}/auth/me`, {
+            headers: { Origin: webOrigin, "X-SmartBord-Client": "browser" },
+          })
+        ).status(),
+        401,
+      );
+      await stale.close();
+      await tab.close();
+    },
+  );
+  await check(
+    "Real login, wrong password, lost refresh response and current blocking",
+    async () => {
+      await page.getByLabel("Email address").fill(email);
+      await page
+        .getByLabel("Password", { exact: true })
+        .fill("Incorrect-password");
+      await page.getByRole("button", { name: "Log in" }).click();
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(
+        "Email or password is incorrect",
+      );
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByRole("button", { name: "Log in" }).click();
+      await expect(page).toHaveURL(`${webOrigin}/account`);
+      await expect(
+        page.getByRole("heading", { name: "Synthetic Browser Member" }),
+      ).toBeVisible();
+      await fixture("expire-access", userId);
+      let interruptedRotations = 0;
+      let rotationStatus;
+      await page.route(`${api}/auth/refresh`, async (route) => {
+        interruptedRotations++;
+        // Commit the real rotation in an isolated transport, then discard the
+        // response before this browser receives rotated cookies or JSON.
+        const transport = await browser.newContext();
+        try {
+          rotationStatus = (
+            await transport.request.fetch(route.request())
+          ).status();
+        } finally {
+          await transport.close();
+          await route.abort();
+        }
+      });
+      await page.reload();
+      await expect(page).toHaveURL(/\/login\?session=ended$/);
+      assert.equal(rotationStatus, 200);
+      assert.equal(
+        await page.evaluate(() =>
+          localStorage.getItem("smartbord:refresh-uncertain"),
+        ),
+        "1",
+      );
+      const recoveryTab = await context.newPage();
+      await recoveryTab.goto(`${webOrigin}/account`);
+      await expect(recoveryTab).toHaveURL(/\/login\?session=ended$/);
+      assert.equal(interruptedRotations, 1);
+      await recoveryTab.close();
+      await page.unroute(`${api}/auth/refresh`);
+      await page.getByLabel("Email address").fill(email);
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByRole("button", { name: "Log in" }).click();
+      await expect(page).toHaveURL(`${webOrigin}/account`);
+      await expect(
+        page.getByRole("heading", { name: "Synthetic Browser Member" }),
+      ).toBeVisible();
+      assert.equal(
+        await page.evaluate(() =>
+          localStorage.getItem("smartbord:refresh-uncertain"),
+        ),
+        null,
+      );
+      await fixture("block", userId);
+      await page.reload();
+      await expect(page).toHaveURL(/\/login\?session=ended$/);
+      assert.equal((await page.content()).includes(email), false);
+    },
+  );
+  await check(
+    "Browsers without Web Locks fail before sending credentials",
+    async () => {
+      const unsupported = await browser.newContext();
+      await unsupported.addInitScript(() =>
+        Object.defineProperty(navigator, "locks", { value: undefined }),
+      );
+      const unsupportedPage = await unsupported.newPage();
+      let authCalls = 0;
+      unsupported.on("request", (request) => {
+        if (request.url().startsWith(`${api}/auth/`)) authCalls++;
+      });
+      await unsupportedPage.goto(`${webOrigin}/login`);
+      await unsupportedPage.getByLabel("Email address").fill(email);
+      await unsupportedPage
+        .getByLabel("Password", { exact: true })
+        .fill(password);
+      await unsupportedPage.getByRole("button", { name: "Log in" }).click();
+      await expect(
+        unsupportedPage.getByRole("main").getByRole("alert"),
+      ).toContainText("Web Locks");
+      assert.equal(authCalls, 0);
+      await unsupported.close();
+    },
+  );
+  assert.deepEqual(errors, []);
+  if (abort.signal.aborted) interrupted();
+  console.log(
+    `Verified ${checks.length} real browser scenarios. Screenshots: ${temp}`,
+  );
+  // Optional screenshot export is synthetic UI only, never account credentials.
+  if (process.env.AUTH_QA_SCREENSHOTS) {
+    const { mkdirSync, copyFileSync } = await import("node:fs");
+    mkdirSync(process.env.AUTH_QA_SCREENSHOTS, { recursive: true });
+    for (const name of ["home-desktop", "login-mobile", "account-desktop"])
+      copyFileSync(
+        join(temp, `${name}.png`),
+        join(process.env.AUTH_QA_SCREENSHOTS, `${name}.png`),
+      );
+  }
+} catch (error) {
+  verificationError = error;
+  if (qaPage && process.env.AUTH_QA_SCREENSHOTS) {
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(process.env.AUTH_QA_SCREENSHOTS, { recursive: true });
+    await qaPage
+      .screenshot({
+        path: join(process.env.AUTH_QA_SCREENSHOTS, "failure.png"),
+      })
+      .catch(() => {});
+  }
+} finally {
+  await browser?.close();
+  await stop(webHost);
+  for (const child of children) await stop(child);
+  if (backendHost?.connected) {
+    const closed = message(backendHost, "closed", 30_000);
+    const done = exited(backendHost);
+    backendHost.send({ kind: "close" });
+    try {
+      cleanupConfirmed = (await closed).removed;
+      await done;
+    } catch {
+      await stop(backendHost);
+    }
+  } else await stop(backendHost);
+  try {
+    if (trusted) run("security", ["remove-trusted-cert", ca]);
+    if (imported) {
+      try {
+        run("security", ["delete-certificate", "-Z", fingerprint, keychain]);
+      } catch (error) {
+        if (error.status !== 44) certificateCleanupFailed = true;
+      }
+    }
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+  console.log(
+    `Cleanup: temporary hosts stopped; CA cleanup confirmed: ${!certificateCleanupFailed}; temporary keys/files removed; disposable database removal confirmed: ${cleanupConfirmed}.`,
+  );
+}
+if (certificateCleanupFailed)
+  throw new Error("Temporary certificate cleanup was not confirmed.");
+if (backendHost && !cleanupConfirmed)
+  throw new Error("Disposable database cleanup was not confirmed.");
+if (verificationError) {
+  console.error(
+    `Verification failed during: ${activeCheck} (${verificationError.name || "Error"}). Request headers and credentials are redacted.`,
+  );
+  console.error(
+    String(verificationError.message)
+      .split("Call log:")[0]
+      .replace(/sb_[ar]\.[A-Za-z0-9_.-]+/g, "[credential redacted]")
+      .replace(/Synthetic-[A-Za-z0-9-]+/g, "[synthetic password redacted]")
+      .slice(0, 1800),
+  );
+  process.exitCode = 1;
+}
