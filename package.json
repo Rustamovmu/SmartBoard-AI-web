@@ -7,11 +7,12 @@
     "build": "next build",
     "start": "next start",
     "check": "tsc --noEmit --incremental false --project tsconfig.check.json",
-    "lint": "oxlint src scripts next.config.ts",
+    "lint": "oxlint src scripts tests next.config.ts",
     "test:web": "node scripts/verify-auth.mjs",
     "dev:https": "yarn dev",
     "dev:http": "next dev --hostname 127.0.0.1",
-    "setup:https": "node scripts/setup-https.mjs"
+    "setup:https": "node scripts/setup-https.mjs",
+    "test:startup": "node --test tests/dev-startup.test.mjs"
   },
   "dependencies": {
     "next": "16.4.4",

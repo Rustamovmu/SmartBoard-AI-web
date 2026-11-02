@@ -1,5 +1,6 @@
 import { fork } from "node:child_process";
 import { resolve } from "node:path";
+import { createServer } from "node:net";
 import { localTls, localOrigin, projectRoot } from "./local-https.mjs";
 import { startApiProxy } from "./api-https-proxy.mjs";
 
@@ -8,6 +9,25 @@ if (process.env.NODE_ENV === "production")
     "The localhost development launcher refuses production mode.",
   );
 let proxy, child, closing;
+async function requireFreePort(origin, label) {
+  const port = Number(new URL(origin).port || 443);
+  const probe = createServer();
+  try {
+    await new Promise((done, reject) => {
+      probe.once("error", reject);
+      probe.listen(port, "127.0.0.1", done);
+    });
+  } catch (error) {
+    if (error.code === "EADDRINUSE") {
+      throw new Error(
+        `${label} port ${port} is already in use. Stop its existing dev command first. The backend must run separately on port 4001.`,
+      );
+    }
+    throw error;
+  } finally {
+    if (probe.listening) await new Promise((done) => probe.close(done));
+  }
+}
 async function close() {
   return (closing ??= (async () => {
     if (child && child.exitCode === null && child.signalCode === null) {
@@ -51,6 +71,10 @@ try {
       "Web HTTPS, API HTTPS and backend HTTP must use three different ports.",
     );
   }
+  // Check both ports before creating a bridge or loading Next. The actual web
+  // server still handles bind errors in case another process wins the race.
+  await requireFreePort(webOrigin, "Web HTTPS");
+  await requireFreePort(apiOrigin, "API HTTPS");
   proxy = await startApiProxy({
     origin: apiOrigin,
     upstream,
@@ -72,17 +96,38 @@ try {
     stdio: ["inherit", "inherit", "inherit", "ipc"],
   });
   await new Promise((done, reject) => {
-    child.once("error", reject);
-    child.once("exit", () =>
-      reject(
-        new Error(
-          "Web server exited before startup. Check whether the web port is already in use.",
+    const timer = setTimeout(
+      () =>
+        settled(
+          new Error(
+            "Web startup timed out. Check the server output and port configuration.",
+          ),
         ),
-      ),
+      60_000,
     );
-    child.on("message", (message) => {
-      if (message.kind === "ready") done();
-    });
+    const error = (failure) => settled(failure);
+    const exited = () =>
+      settled(
+        new Error(
+          "Web server exited before startup. Its API bridge has been stopped.",
+        ),
+      );
+    const received = (message) => {
+      if (message.kind === "ready") settled();
+      if (message.kind === "startup-failed")
+        settled(new Error(message.message));
+    };
+    function settled(failure) {
+      clearTimeout(timer);
+      child.off("error", error);
+      child.off("exit", exited);
+      child.off("message", received);
+      if (failure) reject(failure);
+      else done();
+    }
+    child.once("error", error);
+    child.once("exit", exited);
+    child.on("message", received);
   });
   if (process.connected) process.send({ kind: "ready" });
   console.log(`Open ${webOrigin}/signup`);
@@ -103,5 +148,5 @@ try {
       : error.message,
   );
   await close();
-  process.exitCode = 1;
+  process.exit(1);
 }
