@@ -29,7 +29,7 @@ export function failure(error: unknown): {
           ? String(error.errors[0]?.extensions?.code || "UNKNOWN")
           : "UNKNOWN";
   const messages: Record<string, string> = {
-    CONFLICT: "The last active administrator cannot be blocked or demoted.",
+    CONFLICT: "This entry changed. Refresh it before trying again.",
     NOT_FOUND: "This account no longer exists. Refresh the list.",
     VALIDATION_ERROR:
       "This change was rejected. Refresh the account and try again.",

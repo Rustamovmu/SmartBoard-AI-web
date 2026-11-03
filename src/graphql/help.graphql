@@ -1,0 +1,11 @@
+query HelpEntries($input: HelpEntriesInput!) {
+ helpEntries(input: $input) { __typename items { __typename id kind title topic order publishedAt updatedAt } page pageSize total }
+}
+query HelpEntry($id: ID!) {
+ helpEntry(id: $id) { __typename id kind title topic order publishedAt updatedAt bodyMarkdown }
+}
+fragment ManagedHelp on AdminHelpEntry { id kind title bodyMarkdown topic order state revision createdByUserId updatedByUserId createdAt updatedAt publishedAt }
+query AdminHelpEntries($input: AdminHelpEntriesInput!) { adminHelpEntries(input: $input) { items { ...ManagedHelp } page pageSize total } }
+query AdminHelpEntry($id: ID!) { adminHelpEntry(id: $id) { ...ManagedHelp } }
+mutation AdminCreateHelpEntry($input: CreateHelpEntryInput!) { adminCreateHelpEntry(input: $input) { ...ManagedHelp } }
+mutation AdminUpdateHelpEntry($input: UpdateHelpEntryInput!) { adminUpdateHelpEntry(input: $input) { ...ManagedHelp } }

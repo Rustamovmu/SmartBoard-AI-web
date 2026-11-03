@@ -26,8 +26,12 @@ export function AdminLayout({
   initialError,
   denied: initialDenied,
   children,
+  heading = "Accounts.",
+  pageTitle = "Account administration",
 }: AdminPageProps & {
   children: (account: Account, invalidate: () => void) => ReactNode;
+  heading?: string;
+  pageTitle?: string;
 }) {
   const router = useRouter();
   const [account, setAccount] = useState(initialAccount);
@@ -35,24 +39,37 @@ export function AdminLayout({
   const [error, setError] = useState(initialError || "");
   const [leaving, setLeaving] = useState(false);
   const generation = useRef(0);
+  const [checking, setChecking] = useState(false);
+  const [resetVersion, setResetVersion] = useState(0);
+  const actorId = useRef(initialAccount?.id);
   const exiting = useRef(false);
   const clear = useCallback(() => {
     ++generation.current;
+    window.dispatchEvent(new Event("smartbord:clear-protected"));
+    setChecking(false);
+    setResetVersion((value) => value + 1);
     setAccount(null);
   }, []);
   const check = useCallback(async () => {
     if (exiting.current) return;
     const ticket = ++generation.current;
-    setAccount(null);
+    setChecking(true);
     setError("");
     try {
       const user = await currentAccount();
       if (ticket !== generation.current || exiting.current) return;
       const allowed = user.role === "ADMIN" && user.status === "ACTIVE";
       setDenied(!allowed);
-      setAccount(allowed ? user : null);
+      if (!allowed) clear();
+      else {
+        if (actorId.current && actorId.current !== user.id) clear();
+        actorId.current = user.id;
+        setAccount(user);
+      }
+      setChecking(false);
     } catch (cause) {
       if (ticket !== generation.current || exiting.current) return;
+      clear();
       if (
         cause instanceof AuthError &&
         (cause.status === 401 || cause.status === 403)
@@ -60,7 +77,7 @@ export function AdminLayout({
         window.location.replace("/login?session=ended");
       } else setError(errorMessage(cause));
     }
-  }, []);
+  }, [clear]);
   useEffect(() => {
     void check();
     const visible = () => {
@@ -69,7 +86,19 @@ export function AdminLayout({
     const restored = () => {
       void check();
     };
-    const navigating = (_url: string, { shallow }: { shallow: boolean }) => {
+    const navigating = (url: string, { shallow }: { shallow: boolean }) => {
+      // Give an editor a synchronous chance to veto before clearing its tree.
+      if (
+        !window.dispatchEvent(
+          new Event("smartbord:before-admin-navigation", { cancelable: true }),
+        )
+      ) {
+        const error = Object.assign(new Error("Admin navigation cancelled"), {
+          cancelled: true,
+        });
+        router.events.emit("routeChangeError", error, url, { shallow });
+        throw error;
+      }
       if (!shallow) clear();
     };
     const completed = (_url: string, { shallow }: { shallow: boolean }) => {
@@ -121,13 +150,28 @@ export function AdminLayout({
     }
   }
   return (
-    <Layout title="Account administration">
+    <Layout title={pageTitle}>
       <div className="admin-shell">
         <aside className="admin-nav" aria-label="Administration">
           <span className="eyebrow">PLATFORM ADMINISTRATION</span>
           <nav aria-label="Admin navigation">
-            <Link href="/admin/users" prefetch={false} aria-current="page">
+            <Link
+              href="/admin/users"
+              prefetch={false}
+              aria-current={
+                router.pathname === "/admin/users" ? "page" : undefined
+              }
+            >
               Accounts
+            </Link>
+            <Link
+              href="/admin/help"
+              prefetch={false}
+              aria-current={
+                router.pathname === "/admin/help" ? "page" : undefined
+              }
+            >
+              Help center
             </Link>
             <Link href="/account" prefetch={false}>
               Your account
@@ -142,7 +186,7 @@ export function AdminLayout({
           <div className="admin-title">
             <div>
               <span className="tiny-label">ACCESS & PERMISSIONS</span>
-              <h1>Accounts.</h1>
+              <h1>{heading}</h1>
             </div>
             <button
               className="button secondary"
@@ -160,6 +204,7 @@ export function AdminLayout({
               </button>
             </div>
           )}
+          {checking && <p role="status">Checking administrator access…</p>}
           {denied ? (
             <section>
               <h2>Access denied</h2>
@@ -169,10 +214,16 @@ export function AdminLayout({
               </Link>
             </section>
           ) : account ? (
-            children(account, () => {
-              clear();
-              void check();
-            })
+            <div
+              key={`${account.id}:${resetVersion}`}
+              hidden={checking}
+              aria-busy={checking}
+            >
+              {children(account, () => {
+                clear();
+                void check();
+              })}
+            </div>
           ) : (
             <p role="status">
               {error

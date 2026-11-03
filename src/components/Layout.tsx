@@ -31,6 +31,9 @@ export function Layout({
           SmartBord<span className="brand-ai">AI</span>
         </Link>
         <nav aria-label="Main navigation">
+          <Link href="/help" prefetch={false}>
+            Help
+          </Link>
           <Link href="/account" prefetch={false}>
             Account
           </Link>

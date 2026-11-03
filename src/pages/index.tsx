@@ -74,8 +74,8 @@ export default function Home() {
           <span>03 / WHAT’S NEXT</span>
           <h2>Built one step at a time.</h2>
           <p>
-            Account access is here. Web capture, community and admin screens are
-            coming later.
+            Account access, administration and Help are here. Capture and
+            community remain future work.
           </p>
         </div>
       </section>

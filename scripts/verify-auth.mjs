@@ -22,7 +22,8 @@ if (process.platform !== "darwin")
     "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
   );
 const development = process.argv.includes("--dev");
-const adminMode = process.argv.includes("--admin");
+const helpMode = process.argv.includes("--help");
+const adminMode = process.argv.includes("--admin") || helpMode;
 const existingTls = process.argv.includes("--local-cert") ? localTls() : null;
 if (!existingTls && !process.argv.includes("--trust-local-ca"))
   throw new Error(
@@ -690,6 +691,10 @@ try {
       }
     },
   );
+  if (helpMode) {
+    const { verifyHelp } = await import("./verify-help.mjs");
+    await verifyHelp({ browser, webOrigin, api, ready, check, temp });
+  }
   if (adminMode) {
     const { verifyAdmin } = await import("./verify-admin.mjs");
     await verifyAdmin({ browser, webOrigin, api, ready, fixture, check, temp });
@@ -709,6 +714,7 @@ try {
       "login-mobile",
       "account-desktop",
       ...(adminMode ? ["admin-desktop", "admin-mobile"] : []),
+      ...(helpMode ? ["help-desktop", "help-mobile", "help-editor"] : []),
     ])
       copyFileSync(
         join(temp, `${name}.png`),

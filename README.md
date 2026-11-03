@@ -8,7 +8,7 @@ SmartBord home/layout, `/signup`, `/login` and `/account`. Signup/login use the 
 
 Credentials stay in backend-issued Secure/HttpOnly/SameSite=Strict `__Host-` cookies; JavaScript receives no access/refresh token. Each POST obtains a CSRF nonce and supplies `X-CSRF-Token`. All cookie writes, including CSRF issuance, share a cross-tab lock. Browser storage contains only a credential-free interrupted-refresh marker. A lost/ambiguous refresh response requires a fresh login instead of retrying a potentially spent credential.
 
-Private lectures/photos/notes stay on the user's device. This website has no private-media library, upload, phone sync or remote-delete operation. Native authentication, help/FAQ, community, capture and AI are future work. B3/F1 physical-phone capture, restart and backend-unavailable reopen proof remains incomplete. See [verification](docs/Verification.md) for actual evidence and limitations.
+Private lectures/photos/notes stay on the user's device. This website has no private-media library, upload, phone sync or remote-delete operation. Public Help/FAQ/announcements and protected Help administration are now implemented. Native authentication, community, capture and AI remain future work. B3/F1 physical-phone capture, restart and backend-unavailable reopen proof remains incomplete. See [verification](docs/Verification.md) for actual evidence and limitations.
 
 ## Administrator accounts
 
@@ -29,6 +29,27 @@ yarn graphql:check     # check backend/snapshot/generated consistency without ed
 The backend path defaults to `../SmartBord-AI`; `SMARTBORD_BACKEND_PATH` overrides it for sync/check and browser verification. A standalone website build needs only its committed snapshot/generated types. Dependencies stay pinned in `yarn.lock`.
 
 Both operations use `POST /graphql`, JSON, browser cookies and `X-SmartBord-Client: browser` plus a current `X-CSRF-Token`, including for queries. An active ADMIN can send `AdminAccounts` with Variables `{"input":{"page":1,"pageSize":20,"role":"USER","status":"BLOCKED"}}`; omit filters to include all. Expected success is `data.adminAccounts` with `{items,page,pageSize,total}`. `AdminUpdateAccountAccess` uses Variables `{"input":{"id":"<disposable UUID>","status":"BLOCKED"}}`, `status: "ACTIVE"` to unblock, or `role: "USER"/"ADMIN"` for role changes. It returns the updated public account. USER requests fail with `FORBIDDEN`; loss of valid identity yields `UNAUTHENTICATED`; changing the last active admin fails with `CONFLICT`. See the [full account contract](../SmartBord-AI/contracts/platform-accounts.md) for HTTP/GraphQL errors and setup. No production API/schema change, account deletion, private phone-library access or remote file command was added.
+
+## Public Help and publishing
+
+`/help` provides FAQs and Announcements without login; `/help/[id]` shows a published entry. Public SSR and browser queries omit all credentials, issue no cookies and bypass no protected operation. Draft, archived and missing valid IDs return 404 publicly. Topic filters/pagination are reflected in URLs; FAQ expansion loads its actual answer on demand. Outages show an error and retry, without fabricated entries.
+
+Before using Help against the application database, an operator must explicitly run the backend's `npm run db:prepare` to create `helpEntries` and its required indexes. **This increment does not execute application setup or create initial content.** Existing readiness still covers only core auth/database checks; Help independently fails closed without its indexes. See [the Help contract](../SmartBord-AI/contracts/help-center.md) for exact operations, Variables, limits, identities and disposable prerequisites.
+
+Active administrators reach `/admin/help` through the protected admin navigation. Create a FAQ or announcement, write a title and Markdown body, choose a FAQ topic and display order, then **Save draft**. New entries always remain unpublished until an explicit **Publish** confirmation. Published edits use **Review published changes** and require confirmation before going live. **Unpublish** moves back to draft. **Archive** retains the entry for administrators; **Restore to draft** makes it editable without publishing. There is no permanent deletion, attachment upload, scheduling or content revision history.
+
+FAQ topics are General, Accounts, Devices, Local storage, Privacy and Other. Lower display order comes first; FAQ ties use creation time, announcements use newest publication time, and both have stable ID tie-breakers. Titles are limited to 160 characters and Markdown to 16384 UTF-8 bytes (the editor shows its byte count). Markdown supports headings, paragraphs, lists, emphasis, quotations, code and HTTP(S)/root-relative/fragment links. Raw HTML, images, embedded media and MDX are disabled in both preview and published rendering; the backend never fetches authored URLs.
+
+Unsaved editor content stays only in memory. Successful same-account identity revalidation preserves it; logout, identity changes and failed verification clear protected state. Navigation warns before discarding edits. Concurrent changes produce a revision conflict with **Reload entry**, rather than silently overwriting another editor. Uncertain writes are never replayed automatically; successful directory reconciliation closes the uncertain editor so the administrator can inspect saved state before another attempt. Known mutation success and a failed refetch have separate feedback.
+
+Run the full auth/admin/Help browser checks in both transports:
+
+```bash
+yarn test:web --dev --local-cert --help
+yarn test:web --local-cert --help
+```
+
+`--help` includes the existing authentication and admin account cases; all records remain synthetic in a guarded disposable database. Authenticated GraphQL retains the existing cross-tab session/CSRF lock. Published queries instead use the explicit `X-SmartBord-Client: public` mode with `credentials: omit`, no auth lock or CSRF issuance. `/graphql` accepts up to 64 KiB JSON and 8 KiB operation documents; authentication requests remain 8 KiB. No community or physical-phone acceptance is implied by these browser tests.
 
 ## Local setup
 

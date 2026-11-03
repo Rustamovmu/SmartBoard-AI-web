@@ -63,6 +63,9 @@ export function Accounts({
   const handleFailure = useCallback(
     (cause: unknown) => {
       const result = failure(cause);
+      if (result.code === "CONFLICT")
+        result.message =
+          "The last active administrator cannot be blocked or demoted.";
       if (result.code === "UNAUTHENTICATED" || result.code === "FORBIDDEN") {
         invalidate();
         return result;
