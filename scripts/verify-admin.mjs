@@ -109,9 +109,23 @@ export async function verifyAdmin({
   const alert = (page) => page.getByRole("main").getByRole("alert");
   async function directory(page, query = "") {
     await page.goto(`${webOrigin}/admin/users${query}`);
-    await expect(
-      page.getByRole("button", { name: "Refresh list" }),
-    ).toBeEnabled({ timeout: 20000 });
+    try {
+      await expect(
+        page.getByRole("button", { name: "Refresh list" }),
+      ).toBeEnabled({ timeout: 20000 });
+    } catch {
+      const headings = await page
+        .getByRole("main")
+        .getByRole("heading")
+        .allTextContents();
+      const alerts = await page
+        .getByRole("main")
+        .getByRole("alert")
+        .allTextContents();
+      throw new Error(
+        `Administrator directory unavailable at ${new URL(page.url()).pathname}; headings: ${headings.join(" / ")}; status: ${alerts.join(" / ")}`,
+      );
+    }
   }
   async function change(page, user, action, confirm = true) {
     await row(page, user)

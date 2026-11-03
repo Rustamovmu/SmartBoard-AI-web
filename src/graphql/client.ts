@@ -51,6 +51,15 @@ export function failure(error: unknown): {
 }
 
 export function createAdminClient(expectedAccountId: string) {
+  return createPlatformClient(expectedAccountId, true);
+}
+export function createAccountClient(expectedAccountId: string) {
+  return createPlatformClient(expectedAccountId, false);
+}
+function createPlatformClient(
+  expectedAccountId: string,
+  administrator: boolean,
+) {
   return new ApolloClient({
     cache: new InMemoryCache(),
     queryDeduplication: false,
@@ -69,8 +78,16 @@ export function createAdminClient(expectedAccountId: string) {
               401,
               "Your session changed. Please sign in again.",
             );
-          if (account.role !== "ADMIN" || account.status !== "ACTIVE")
-            throw new AuthError(403, "Administrator access is required.");
+          if (
+            (administrator && account.role !== "ADMIN") ||
+            account.status !== "ACTIVE"
+          )
+            throw new AuthError(
+              403,
+              administrator
+                ? "Administrator access is required."
+                : "An active account is required.",
+            );
           let response: Response;
           try {
             response = await fetch(`${apiOrigin()}/graphql`, {

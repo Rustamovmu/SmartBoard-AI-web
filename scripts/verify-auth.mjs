@@ -22,7 +22,8 @@ if (process.platform !== "darwin")
     "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
   );
 const development = process.argv.includes("--dev");
-const helpMode = process.argv.includes("--help");
+const communityMode = process.argv.includes("--community");
+const helpMode = process.argv.includes("--help") || communityMode;
 const adminMode = process.argv.includes("--admin") || helpMode;
 const existingTls = process.argv.includes("--local-cert") ? localTls() : null;
 if (!existingTls && !process.argv.includes("--trust-local-ca"))
@@ -360,12 +361,16 @@ try {
       await page.getByLabel("Full name").fill("Synthetic Browser Member");
       await page.getByLabel("Email address").fill(email);
       await page.getByLabel("Password", { exact: true }).fill(password);
-      const grantResponse = page.waitForResponse(
-        (r) =>
-          r.url() === `${api}/auth/signup` && r.request().method() === "POST",
-      );
+      // Read the real signup body before releasing it: success navigates away.
+      let grant;
+      await page.route(`${api}/auth/signup`, async (route) => {
+        const response = await route.fetch();
+        grant = await response.json();
+        await route.fulfill({ response });
+      });
       await page.getByRole("button", { name: "Create account" }).click();
-      const grant = await (await grantResponse).json();
+      await expect(page).toHaveURL(`${webOrigin}/account`);
+      await page.unroute(`${api}/auth/signup`);
       assert.equal(grant.user.role, "USER");
       userId = grant.user.id;
       assert.equal("accessToken" in grant || "refreshToken" in grant, false);
@@ -691,6 +696,18 @@ try {
       }
     },
   );
+  if (communityMode) {
+    const { verifyCommunity } = await import("./verify-community.mjs");
+    await verifyCommunity({
+      browser,
+      webOrigin,
+      api,
+      ready,
+      fixture,
+      check,
+      temp,
+    });
+  }
   if (helpMode) {
     const { verifyHelp } = await import("./verify-help.mjs");
     await verifyHelp({ browser, webOrigin, api, ready, check, temp });
@@ -715,6 +732,9 @@ try {
       "account-desktop",
       ...(adminMode ? ["admin-desktop", "admin-mobile"] : []),
       ...(helpMode ? ["help-desktop", "help-mobile", "help-editor"] : []),
+      ...(communityMode
+        ? ["community-desktop", "community-mobile", "community-editor"]
+        : []),
     ])
       copyFileSync(
         join(temp, `${name}.png`),

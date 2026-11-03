@@ -1,0 +1,86 @@
+fragment ManagedCommunity on ManagedCommunityPost {
+  id
+  authorUserId
+  title
+  publicDisplayName
+  bodyMarkdown
+  state
+  revision
+  createdAt
+  updatedAt
+  publishedAt
+  removedAt
+  removalReason
+}
+query CommunityPosts($input: CommunityPostsInput!) {
+  communityPosts(input: $input) {
+    __typename
+    items {
+      __typename
+      id
+      title
+      publicDisplayName
+      publishedAt
+      updatedAt
+    }
+    page
+    pageSize
+    total
+  }
+}
+query CommunityPost($id: ID!) {
+  communityPost(id: $id) {
+    __typename
+    id
+    title
+    publicDisplayName
+    bodyMarkdown
+    publishedAt
+    updatedAt
+  }
+}
+query MyCommunityPosts($input: ManagedCommunityPostsInput!) {
+  myCommunityPosts(input: $input) {
+    items {
+      ...ManagedCommunity
+    }
+    page
+    pageSize
+    total
+  }
+}
+query MyCommunityPost($id: ID!) {
+  myCommunityPost(id: $id) {
+    ...ManagedCommunity
+  }
+}
+query AdminCommunityPosts($input: ManagedCommunityPostsInput!) {
+  adminCommunityPosts(input: $input) {
+    items {
+      ...ManagedCommunity
+    }
+    page
+    pageSize
+    total
+  }
+}
+query AdminCommunityPost($id: ID!) {
+  adminCommunityPost(id: $id) {
+    ...ManagedCommunity
+  }
+}
+mutation CreateCommunityPost($input: CreateCommunityPostInput!) {
+  createCommunityPost(input: $input) {
+    ...ManagedCommunity
+  }
+}
+mutation UpdateCommunityPost($input: UpdateCommunityPostInput!) {
+  updateCommunityPost(input: $input) {
+    ...ManagedCommunity
+  }
+}
+mutation AdminModerateCommunityPost($input: ModerateCommunityPostInput!) {
+  adminModerateCommunityPost(input: $input) {
+    ...ManagedCommunity
+  }
+}

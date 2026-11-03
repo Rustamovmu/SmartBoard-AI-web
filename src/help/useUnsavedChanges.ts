@@ -1,11 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/router";
-export function useUnsavedChanges(dirty: boolean) {
+export function useUnsavedChanges(
+  dirty: boolean,
+  message = "Discard unsaved help changes?",
+) {
   const router = useRouter();
   const unsaved = useRef(dirty);
   unsaved.current = dirty;
-  const allowLeave = () =>
-    !dirty || window.confirm("Discard unsaved help changes?");
+  const allowLeave = () => !dirty || window.confirm(message);
   useEffect(() => {
     const reset = () => {
       unsaved.current = false;
@@ -18,8 +20,7 @@ export function useUnsavedChanges(dirty: boolean) {
     };
     const beforeNavigation = (event: Event) => {
       if (!unsaved.current) return;
-      if (!window.confirm("Discard unsaved help changes?"))
-        event.preventDefault();
+      if (!window.confirm(message)) event.preventDefault();
       else unsaved.current = false;
     };
     const click = (event: MouseEvent) => {
@@ -50,7 +51,7 @@ export function useUnsavedChanges(dirty: boolean) {
         target.search === window.location.search
       )
         return;
-      if (!window.confirm("Discard unsaved help changes?")) {
+      if (!window.confirm(message)) {
         event.preventDefault();
         event.stopImmediatePropagation();
       } else unsaved.current = false;
@@ -64,7 +65,7 @@ export function useUnsavedChanges(dirty: boolean) {
     );
     router.beforePopState(() => {
       if (!unsaved.current) return true;
-      if (!window.confirm("Discard unsaved help changes?")) return false;
+      if (!window.confirm(message)) return false;
       unsaved.current = false;
       return true;
     });
@@ -78,7 +79,7 @@ export function useUnsavedChanges(dirty: boolean) {
       );
       router.beforePopState(() => true);
     };
-  }, [router]);
+  }, [router, message]);
   return {
     allowLeave,
     reset: () => {

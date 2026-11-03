@@ -180,6 +180,13 @@ export default function AccountPage({
               </button>
             </section>
             <aside className="ownership-card">
+              <Link
+                href="/account/posts"
+                className="text-link"
+                prefetch={false}
+              >
+                Manage your community posts
+              </Link>
               <span className="tiny-label">A NOTE ON OWNERSHIP</span>
               <h2>
                 Your account

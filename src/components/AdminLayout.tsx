@@ -28,10 +28,12 @@ export function AdminLayout({
   children,
   heading = "Accounts.",
   pageTitle = "Account administration",
+  requiredRole = "ADMIN",
 }: AdminPageProps & {
   children: (account: Account, invalidate: () => void) => ReactNode;
   heading?: string;
   pageTitle?: string;
+  requiredRole?: "ADMIN" | "ACTIVE";
 }) {
   const router = useRouter();
   const [account, setAccount] = useState(initialAccount);
@@ -58,7 +60,9 @@ export function AdminLayout({
     try {
       const user = await currentAccount();
       if (ticket !== generation.current || exiting.current) return;
-      const allowed = user.role === "ADMIN" && user.status === "ACTIVE";
+      const allowed =
+        (requiredRole === "ACTIVE" || user.role === "ADMIN") &&
+        user.status === "ACTIVE";
       setDenied(!allowed);
       if (!allowed) clear();
       else {
@@ -77,7 +81,7 @@ export function AdminLayout({
         window.location.replace("/login?session=ended");
       } else setError(errorMessage(cause));
     }
-  }, [clear]);
+  }, [clear, requiredRole]);
   useEffect(() => {
     void check();
     const visible = () => {
@@ -152,26 +156,54 @@ export function AdminLayout({
   return (
     <Layout title={pageTitle}>
       <div className="admin-shell">
-        <aside className="admin-nav" aria-label="Administration">
-          <span className="eyebrow">PLATFORM ADMINISTRATION</span>
-          <nav aria-label="Admin navigation">
-            <Link
-              href="/admin/users"
-              prefetch={false}
-              aria-current={
-                router.pathname === "/admin/users" ? "page" : undefined
-              }
-            >
-              Accounts
+        <aside
+          className="admin-nav"
+          aria-label={
+            requiredRole === "ADMIN" ? "Administration" : "Your account"
+          }
+        >
+          <span className="eyebrow">
+            {requiredRole === "ADMIN"
+              ? "PLATFORM ADMINISTRATION"
+              : "YOUR COMMUNITY POSTS"}
+          </span>
+          <nav
+            aria-label={
+              requiredRole === "ADMIN"
+                ? "Admin navigation"
+                : "Account navigation"
+            }
+          >
+            {requiredRole === "ADMIN" && (
+              <>
+                <Link
+                  href="/admin/users"
+                  prefetch={false}
+                  aria-current={
+                    router.pathname === "/admin/users" ? "page" : undefined
+                  }
+                >
+                  Accounts
+                </Link>
+                <Link
+                  href="/admin/help"
+                  prefetch={false}
+                  aria-current={
+                    router.pathname === "/admin/help" ? "page" : undefined
+                  }
+                >
+                  Help center
+                </Link>
+                <Link href="/admin/community" prefetch={false}>
+                  Community moderation
+                </Link>
+              </>
+            )}
+            <Link href="/account/posts" prefetch={false}>
+              Your posts
             </Link>
-            <Link
-              href="/admin/help"
-              prefetch={false}
-              aria-current={
-                router.pathname === "/admin/help" ? "page" : undefined
-              }
-            >
-              Help center
+            <Link href="/community" prefetch={false}>
+              Read community
             </Link>
             <Link href="/account" prefetch={false}>
               Your account
@@ -185,7 +217,11 @@ export function AdminLayout({
         <section className="admin-content">
           <div className="admin-title">
             <div>
-              <span className="tiny-label">ACCESS & PERMISSIONS</span>
+              <span className="tiny-label">
+                {requiredRole === "ADMIN"
+                  ? "ACCESS & PERMISSIONS"
+                  : "COMMUNITY PUBLISHING"}
+              </span>
               <h1>{heading}</h1>
             </div>
             <button
@@ -204,11 +240,15 @@ export function AdminLayout({
               </button>
             </div>
           )}
-          {checking && <p role="status">Checking administrator access…</p>}
+          {checking && <p role="status">Checking account access…</p>}
           {denied ? (
             <section>
               <h2>Access denied</h2>
-              <p>An active administrator account is required.</p>
+              <p>
+                {requiredRole === "ADMIN"
+                  ? "An active administrator account is required."
+                  : "An active account is required."}
+              </p>
               <Link className="text-link" href="/account">
                 Return to your account
               </Link>
@@ -227,8 +267,8 @@ export function AdminLayout({
           ) : (
             <p role="status">
               {error
-                ? "Administration is unavailable until your account can be verified."
-                : "Checking administrator access…"}
+                ? "This area is unavailable until your account can be verified."
+                : "Checking account access…"}
             </p>
           )}
         </section>
