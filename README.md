@@ -8,7 +8,27 @@ SmartBord home/layout, `/signup`, `/login` and `/account`. Signup/login use the 
 
 Credentials stay in backend-issued Secure/HttpOnly/SameSite=Strict `__Host-` cookies; JavaScript receives no access/refresh token. Each POST obtains a CSRF nonce and supplies `X-CSRF-Token`. All cookie writes, including CSRF issuance, share a cross-tab lock. Browser storage contains only a credential-free interrupted-refresh marker. A lost/ambiguous refresh response requires a fresh login instead of retrying a potentially spent credential.
 
-Private lectures/photos/notes stay on the user's device. This website has no private-media library, upload, phone sync or remote-delete operation. Native authentication, admin screens, community, capture and AI are future work. See [verification](docs/Verification.md) for actual evidence and limitations.
+Private lectures/photos/notes stay on the user's device. This website has no private-media library, upload, phone sync or remote-delete operation. Native authentication, help/FAQ, community, capture and AI are future work. B3/F1 physical-phone capture, restart and backend-unavailable reopen proof remains incomplete. See [verification](docs/Verification.md) for actual evidence and limitations.
+
+## Administrator accounts
+
+`/admin` redirects to `/admin/users`. An active ADMIN is required; anonymous visitors go to login and current USER accounts receive a 403 denial without directory data. Expired access renders a checking shell until the browser safely refreshes. Account pages link to administration only for verified administrators. No real administrator is created automatically: use the backend’s explicit local bootstrap process when authorized.
+
+The directory shows name, email, role, status and UTC join date. Role/status filters and 20/50/100-row pagination are retained in validated URL parameters; changing filters resets page 1. Deleted accounts are visible but read-only. Confirmed actions change USER/ADMIN roles or block/unblock ACTIVE/BLOCKED accounts. The confirmation explains that every session for the target ends and fresh login is required. Self-blocking/demotion is allowed when another active admin remains; success returns the actor to login. Last-admin conflicts are enforced transactionally by the backend and explained in the UI.
+
+GraphQL uses the same fixed API origin as authentication. Session validation/refresh, CSRF issuance and the complete response share the existing cross-tab Web Lock. Directory queries use no cache; no credentials or account directory is persisted in browser storage. Permission loss clears the protected view. A failed/ambiguous mutation is never retried automatically: refresh the list to establish current state before submitting another change. A successful change followed by a list outage displays separate success and refresh-error feedback.
+
+Typed operations live in [accounts.graphql](src/graphql/accounts.graphql). The checked-in [schema snapshot](contracts/schema.graphql) comes from the backend’s versioned artifact, without server introspection or Nest/Mongoose imports:
+
+```bash
+yarn graphql:sync      # explicitly copy the backend artifact and generate types
+yarn graphql:generate  # generate from the website-local snapshot
+yarn graphql:check     # check backend/snapshot/generated consistency without editing tracked files
+```
+
+The backend path defaults to `../SmartBord-AI`; `SMARTBORD_BACKEND_PATH` overrides it for sync/check and browser verification. A standalone website build needs only its committed snapshot/generated types. Dependencies stay pinned in `yarn.lock`.
+
+Both operations use `POST /graphql`, JSON, browser cookies and `X-SmartBord-Client: browser` plus a current `X-CSRF-Token`, including for queries. An active ADMIN can send `AdminAccounts` with Variables `{"input":{"page":1,"pageSize":20,"role":"USER","status":"BLOCKED"}}`; omit filters to include all. Expected success is `data.adminAccounts` with `{items,page,pageSize,total}`. `AdminUpdateAccountAccess` uses Variables `{"input":{"id":"<disposable UUID>","status":"BLOCKED"}}`, `status: "ACTIVE"` to unblock, or `role: "USER"/"ADMIN"` for role changes. It returns the updated public account. USER requests fail with `FORBIDDEN`; loss of valid identity yields `UNAUTHENTICATED`; changing the last active admin fails with `CONFLICT`. See the [full account contract](../SmartBord-AI/contracts/platform-accounts.md) for HTTP/GraphQL errors and setup. No production API/schema change, account deletion, private phone-library access or remote file command was added.
 
 ## Local setup
 
@@ -59,9 +79,12 @@ yarn test:web --trust-local-ca
 # After local certificate setup, reuse it without another trust dialog:
 yarn test:web --dev --local-cert
 yarn test:web --local-cert
+# Include the admin account scenarios in either transport mode:
+yarn test:web --dev --local-cert --admin
+yarn test:web --local-cert --admin
 ```
 
-Approve the macOS certificate-trust dialog when it appears. The command creates a one-day CA constrained by X.509 name constraints to localhost/127.0.0.1, temporarily trusts it for SSL in the user's login keychain, and launches Chromium with strict certificate validation. It builds the website for generated same-host HTTPS ports and runs against the real backend and an initially empty `sbt_<32 hex digits>` MongoDB database. Fixtures for access expiry/account blocking use a private process channel, never a production HTTP route. Only synthetic accounts are created.
+Approve the macOS certificate-trust dialog when it appears. The command creates a one-day CA constrained by X.509 name constraints to localhost/127.0.0.1, temporarily trusts it for SSL in the user's login keychain, and launches Chromium with strict certificate validation. It builds the website for generated same-host HTTPS ports and runs against the real backend and an initially empty `sbt_<32 hex digits>` MongoDB database. Fixtures for access expiry/account blocking use a private process channel, never a production HTTP route. Only synthetic accounts are created. The explicit `--admin` mode additionally seeds two administrators and 24 members through existing services after guarded empty-database preparation; non-active states are then established through the real GraphQL API. Test credentials are derived only in process memory from the disposable run marker, never saved as real credentials.
 
 The `--dev` mode runs the actual HTTPS development launcher and API bridge against a disposable HTTP backend. Production mode uses the production web build and direct disposable HTTPS backend. Both verify that HTTP signup is disabled before credential entry and that the React title/hydration warning is absent. `--local-cert` reuses/preserves the configured development certificate/trust; otherwise the harness owns a temporary test CA.
 

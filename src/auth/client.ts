@@ -124,48 +124,59 @@ export function signIn(
   });
 }
 
-let pendingAccount: Promise<Account> | undefined;
-export function currentAccount(): Promise<Account> {
-  return (pendingAccount ??= exclusive(async () => {
-    try {
-      return (await request<{ user: Account }>("me")).user;
-    } catch (error) {
-      if (!(error instanceof AuthError) || error.status !== 401) throw error;
-    }
-    if (localStorage.getItem(uncertainKey)) {
+// Only call while holding the browser auth lock.
+async function accountWithinLock(): Promise<Account> {
+  try {
+    return (await request<{ user: Account }>("me")).user;
+  } catch (error) {
+    if (!(error instanceof AuthError) || error.status !== 401) throw error;
+  }
+  if (localStorage.getItem(uncertainKey)) {
+    throw new AuthError(
+      401,
+      "Session refresh was interrupted. Please sign in again.",
+    );
+  }
+  // Fetch CSRF before marking: a failed CSRF GET did not rotate credentials.
+  const { csrfToken } = await request<{ csrfToken: string }>("csrf");
+  localStorage.setItem(uncertainKey, "1");
+  try {
+    const grant = await request<BrowserGrant>("refresh", {}, csrfToken);
+    localStorage.removeItem(uncertainKey);
+    return grant.user;
+  } catch (error) {
+    if (error instanceof AuthError && error.status !== 0 && error.status < 500)
+      localStorage.removeItem(uncertainKey);
+    if (
+      error instanceof AuthError &&
+      (error.status === 0 || error.status >= 500)
+    ) {
       throw new AuthError(
         401,
         "Session refresh was interrupted. Please sign in again.",
       );
     }
-    // Fetch CSRF before marking: a failed CSRF GET did not rotate credentials.
-    const { csrfToken } = await request<{ csrfToken: string }>("csrf");
-    localStorage.setItem(uncertainKey, "1");
-    try {
-      const grant = await request<BrowserGrant>("refresh", {}, csrfToken);
-      localStorage.removeItem(uncertainKey);
-      return grant.user;
-    } catch (error) {
-      if (
-        error instanceof AuthError &&
-        error.status !== 0 &&
-        error.status < 500
-      )
-        localStorage.removeItem(uncertainKey);
-      if (
-        error instanceof AuthError &&
-        (error.status === 0 || error.status >= 500)
-      ) {
-        throw new AuthError(
-          401,
-          "Session refresh was interrupted. Please sign in again.",
-        );
-      }
-      throw error;
-    }
-  }).finally(() => {
+    throw error;
+  }
+}
+
+let pendingAccount: Promise<Account> | undefined;
+export function currentAccount(): Promise<Account> {
+  return (pendingAccount ??= exclusive(accountWithinLock).finally(() => {
     pendingAccount = undefined;
   }));
+}
+
+// The caller's complete request shares credential/CSRF serialization. Never
+// call currentAccount() from inside this callback (it acquires the same lock).
+export function authenticatedRequest<T>(
+  action: (account: Account, csrfToken: string) => Promise<T>,
+): Promise<T> {
+  return exclusive(async () => {
+    const account = await accountWithinLock();
+    const { csrfToken } = await request<{ csrfToken: string }>("csrf");
+    return action(account, csrfToken);
+  });
 }
 
 export async function signOut() {
@@ -176,7 +187,7 @@ export async function signOut() {
   });
 }
 
-function announce(event: string) {
+export function announce(event: string) {
   if (typeof BroadcastChannel === "undefined") return;
   const channel = new BroadcastChannel("smartbord:session");
   channel.postMessage(event);

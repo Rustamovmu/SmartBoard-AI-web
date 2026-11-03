@@ -159,6 +159,17 @@ export default function AccountPage({
                   </dd>
                 </div>
               </dl>
+              {account.role === "ADMIN" && account.status === "ACTIVE" && (
+                <p>
+                  <Link
+                    className="text-link"
+                    href="/admin/users"
+                    prefetch={false}
+                  >
+                    Manage platform accounts ↗
+                  </Link>
+                </p>
+              )}
               <button
                 className="button secondary"
                 disabled={pending}

@@ -22,6 +22,7 @@ if (process.platform !== "darwin")
     "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
   );
 const development = process.argv.includes("--dev");
+const adminMode = process.argv.includes("--admin");
 const existingTls = process.argv.includes("--local-cert") ? localTls() : null;
 if (!existingTls && !process.argv.includes("--trust-local-ca"))
   throw new Error(
@@ -210,6 +211,7 @@ try {
     BROWSER_TEST_CERT: cert,
     BROWSER_TEST_KEY: key,
     BROWSER_TEST_HTTP: development ? "1" : "0",
+    BROWSER_TEST_ADMIN: adminMode ? "1" : "0",
   };
   backendHost = fork(join(backend, "scripts/browser-auth-host.ts"), [], {
     cwd: backend,
@@ -546,6 +548,10 @@ try {
       await fixture("expire-access", userId);
       let interruptedRotations = 0;
       let rotationStatus;
+      let finishRotation;
+      const rotationFinished = new Promise((done) => {
+        finishRotation = done;
+      });
       await page.route(`${api}/auth/refresh`, async (route) => {
         interruptedRotations++;
         // Commit the real rotation in an isolated transport, then discard the
@@ -560,12 +566,29 @@ try {
         } finally {
           await transport.close().catch(() => {});
           await route.abort().catch(() => {});
+          finishRotation();
         }
       });
       await page.reload();
       await expect(page).toHaveURL(/\/login\?session=ended$/, {
         timeout: 30_000,
       });
+      // Navigation may finish before the isolated transport does. Observe the
+      // actual committed rotation before asserting or tearing down the context.
+      let rotationTimer;
+      try {
+        await Promise.race([
+          rotationFinished,
+          new Promise((_, reject) => {
+            rotationTimer = setTimeout(
+              () => reject(new Error("Lost-refresh observer timed out")),
+              15_000,
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(rotationTimer);
+      }
       assert.equal(rotationStatus, 200);
       assert.equal(
         await page.evaluate(() =>
@@ -667,6 +690,10 @@ try {
       }
     },
   );
+  if (adminMode) {
+    const { verifyAdmin } = await import("./verify-admin.mjs");
+    await verifyAdmin({ browser, webOrigin, api, ready, fixture, check, temp });
+  }
   assert.deepEqual(errors, []);
   assert.deepEqual(devWarnings, []);
   if (abort.signal.aborted) interrupted();
@@ -677,7 +704,12 @@ try {
   if (process.env.AUTH_QA_SCREENSHOTS) {
     const { mkdirSync, copyFileSync } = await import("node:fs");
     mkdirSync(process.env.AUTH_QA_SCREENSHOTS, { recursive: true });
-    for (const name of ["home-desktop", "login-mobile", "account-desktop"])
+    for (const name of [
+      "home-desktop",
+      "login-mobile",
+      "account-desktop",
+      ...(adminMode ? ["admin-desktop", "admin-mobile"] : []),
+    ])
       copyFileSync(
         join(temp, `${name}.png`),
         join(process.env.AUTH_QA_SCREENSHOTS, `${name}.png`),

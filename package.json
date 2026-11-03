@@ -12,21 +12,30 @@
     "dev:https": "yarn dev",
     "dev:http": "next dev --hostname 127.0.0.1",
     "setup:https": "node scripts/setup-https.mjs",
-    "test:startup": "node --test tests/dev-startup.test.mjs"
+    "test:startup": "node --test tests/dev-startup.test.mjs",
+    "graphql:generate": "node scripts/graphql.mjs generate",
+    "graphql:check": "node scripts/graphql.mjs check",
+    "graphql:sync": "node scripts/graphql.mjs sync"
   },
   "dependencies": {
+    "@apollo/client": "4.3.6",
+    "graphql": "16.14.2",
     "next": "16.4.4",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "rxjs": "7.8.2"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "7.4.6",
+    "@graphql-codegen/typed-document-node": "7.2.0",
+    "@graphql-codegen/typescript-operations": "6.2.0",
+    "@playwright/test": "1.64.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
-    "typescript": "^5",
-    "@playwright/test": "1.64.1",
-    "oxlint": "1.90.0"
+    "oxlint": "1.90.0",
+    "typescript": "^5"
   },
   "packageManager": "yarn@1.22.22",
   "engines": {

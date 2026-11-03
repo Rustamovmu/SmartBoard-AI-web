@@ -46,3 +46,16 @@ export async function accountProps({ req, res }: GetServerSidePropsContext) {
     };
   }
 }
+
+// SSR authorizes the shell only. Account lists are never serialized into props.
+export async function adminProps(context: GetServerSidePropsContext) {
+  const result = await accountProps(context);
+  if ("redirect" in result) return result;
+  const account = result.props.initialAccount;
+  const denied =
+    !!account && (account.role !== "ADMIN" || account.status !== "ACTIVE");
+  if (denied) context.res.statusCode = 403;
+  return {
+    props: { ...result.props, initialAccount: denied ? null : account, denied },
+  };
+}
