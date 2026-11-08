@@ -1,3 +1,4 @@
+import { PublicComments } from "@/discussion/PublicComments";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import type { GetServerSidePropsContext } from "next";
@@ -66,6 +67,7 @@ export default function CommunityDetail({
               {helpDate(entry.updatedAt)}
             </p>
             <HelpMarkdown body={entry.bodyMarkdown} />
+            <PublicComments key={entry.id} postId={entry.id} />
           </>
         )}
       </article>

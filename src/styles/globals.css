@@ -1118,3 +1118,74 @@ dialog p {
     margin-left: 8px;
   }
 }
+
+.discussion-section {
+  border-top: 1px solid var(--line, #dce1e4);
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+}
+.discussion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+.discussion-actions button,
+.discussion-manager button,
+.discussion-section button {
+  border: 1px solid #9ba8b2;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  background: white;
+  color: #172d3d;
+  cursor: pointer;
+}
+.discussion-manager button:disabled,
+.discussion-section button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.discussion-list {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.discussion-list article,
+.discussion-editor {
+  min-width: 0;
+  border: 1px solid #dce1e4;
+  border-radius: 0.8rem;
+  padding: 1.25rem;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.discussion-manager label {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.8rem 0;
+}
+.discussion-manager input,
+.discussion-manager textarea,
+.discussion-manager select {
+  max-width: 100%;
+  border: 1px solid #9ba8b2;
+  border-radius: 0.4rem;
+  padding: 0.6rem;
+  font: inherit;
+  color: #172d3d;
+  background: #fff;
+}
+.discussion-manager textarea {
+  width: 100%;
+  resize: vertical;
+}
+.discussion-manager .discussion-id {
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  color: #526574;
+}
+.discussion-list h2,
+.discussion-list h3 {
+  overflow-wrap: anywhere;
+}

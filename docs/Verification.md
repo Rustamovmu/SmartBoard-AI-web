@@ -126,3 +126,45 @@ Failures remain separate evidence: initial backend sandbox database/socket failu
 **No application/production index setup, content seed, real administrator bootstrap, deployment or push occurred.** Help rollout remains separate: explicitly prepare/verify indexes before updating running backend and website. Community requires the same release-tooling preparation/verification before rollout; core readiness does not certify either feature. B3/F1 physical-phone capture/restart/backend-unavailable reopen proof remains incomplete. Native files/auth/video/AI, other browser engines and production hosting/proxy/TLS/retention remain outside this evidence.
 
 Changed website files: `AGENTS.md`, `README.md`, `contracts/schema.graphql`, `docs/Verification.md`, `scripts/verify-admin.mjs`, `scripts/verify-auth.mjs`, `scripts/verify-community.mjs`, `src/community/CommunityManager.tsx`, `src/community/shared.ts`, `src/components/AdminLayout.tsx`, `src/components/Layout.tsx`, `src/graphql/client.ts`, `src/graphql/community.graphql`, `src/graphql/generated.ts`, `src/help/useUnsavedChanges.ts`, `src/pages/account.tsx`, `src/pages/account/posts.tsx`, `src/pages/admin/community.tsx`, `src/pages/community/[id].tsx`, `src/pages/community/index.tsx`, `src/pages/index.tsx`. The backend has its own focused local commit. Complete source/new-file, schema/link/path, credential/artifact and whitespace review precedes commits.
+
+## 2026-11-08 — Community comments and private reports
+
+Implemented public discussion inside `/community/[id]`, active-owner `/account/comments` and `/account/reports`, and administrator `/admin/comments` and `/admin/reports`. Comment creation is explicitly confirmed immediate publication, with editable attribution and a 4096 UTF-8 byte limit. Owners edit/withdraw/republish with expected revisions; removed comments disclose their coded reason and remain locked until restoration to withdrawn draft. Public comments require a published parent; editing/publication/reporting also require that parent. A state-only withdrawal remains possible when the parent is hidden. Unsent composer content exists only in memory; no lecture importer, attachment, threaded reply or phone library exists.
+
+Reports accept a published POST/COMMENT and coded reason, with no free text or file. One retained report/account/target is permitted, even after review. Reporter history is private to that reporter and administrators, with no reporter or moderator account IDs in DTOs. Review is OPEN → RESOLVED/DISMISSED with a current revision. The queue inspects exact current target content and provides separate reasoned removal/restore-to-draft; review itself does not alter content visibility. Backend content-write limits remain 20/account/minute across posts/comments/reports/review; report submission additionally uses 10/account/minute.
+
+Protected pages reuse the current-account/admin lifecycle, cross-tab session/CSRF lock and generated no-cache account-bound clients. Protected comment/report text does not enter SSR props or persistent browser storage. Successful identity checks preserve buffers, navigation asks before discarding text, and blocking/demotion/logout (including another tab) clear protected state. Stale/ambiguous writes lock mutation controls until successful read-only reconciliation and are never replayed. Known successful mutation followed by failed directory read is separately identified. Public comments omit credentials/CSRF and share the restricted safe Markdown renderer, without raw HTML/images/embedded media.
+
+Reference inspection: TripLink backend comment module/resolver/service/input/update and Nestar website comment operations/detail handlers were read only. Adapted owner/service/guard boundaries and parent-visibility aggregation; did not copy profile joins, reference pagination, IDs, physical deletion or business fields. The separate backend [discussion contract](../../SmartBord-AI/contracts/community-discussion.md) documents exact operations/Variables, bounds, identities, rejected states, setup and cleanup.
+
+Source checks passed `yarn run check`, warning-free source `yarn lint`, `yarn graphql:check` and three startup/socket tests. The final ordinary `yarn build` passed after both full browser runs, restoring normal configured origins. The focused development command `yarn test:web --dev --local-cert --discussion-focus` passed 23 grouped scenarios (nine auth plus fourteen discussion) with exact database removal and temporary host cleanup. It intentionally omits older content/admin groups and is not complete regression evidence. Full `yarn test:web --dev --local-cert --discussion` and production `yarn test:web --local-cert --discussion` each passed 52 groups: the existing 38 auth/admin/Help/post groups plus all fourteen discussion groups. Production used `SMARTBORD_NEXT_DIST_DIR=.next/discussion-prod-verification`, independent of development caches. Both confirmed exact disposable DB removal and stopped their own hosts/connections/browser contexts, preserving existing localhost certificate/trust and unrelated user processes. An additional final isolated-cache focused run passed 23 groups, explicitly checking the mobile Publish button and preview before screenshot capture; optional focused screenshot export was also exercised successfully.
+
+Discussion groups cover anonymous/USER/ADMIN route and GraphQL permissions, protected SSR/CSRF isolation; confirmed publication/cancel/byte limits and chosen names; safe credential-free public reading; owner IDOR, retained dirty buffers and canceled navigation; private coded post/comment reports, duplicates and reporter isolation; exact reported-content inspection, reasoned removal, explicit review and restoration to draft; concurrent review conflicts; stale author revisions; aborted and committed-but-lost comment writes with no replay; known save success with failed refetch; committed-but-lost report reconciliation; actual owner withdrawal/republication and hidden-parent public rejection; real fixed-index comment/report outages with retry; responsive public/composer/review layouts and storage/network privacy; and author/admin revocation plus cross-tab logout clearing buffers. Tests use Chromium and actual backend/MongoDB with strict local HTTPS, conservative pacing and synthetic text/identities only. The test host has a bounded 30-minute lifetime for expanded mode, and fixed-index private IPC is guarded by exact owned disposable DB/mode/ID checks. No production test route was added.
+
+An initial development attempt passed the first three discussion groups then timed out selecting the report reason. Explicit accessible select names resolved the locator/accessibility problem; that failed run confirmed its own database/host cleanup and is not passing evidence. An extra concurrent mobile QA launch exited before ready while configured for the same Next cache as an active development run; it confirmed exact database/host cleanup. The harness now honors an explicit separate development build directory. Initial sandbox backend DB/socket attempts also failed, then passed with required network/loopback permission. Backend full regression passed 120 integration tests before final uniqueness-index hardening; its final discussion suite passed 18 tests including the added partial-uniqueness rejection case. Backend lint/type/build/schema checks, 103 unit tests, 18 HTTP tests and Postman 83 requests/322 assertions also passed; see backend progress for exact scope. The initial mobile full-page screenshot omitted paint below the textarea. Explicit scrolling, preview and enabled-control checks produced a settled complete screenshot; no product behavior change was required. Public discussion, desktop report queue and the final mobile composer captures were visually inspected. No assertion, TLS policy, auth rule or rate budget was weakened.
+
+No new dependency/lockfile changes, application index setup/CRUD, real account bootstrap, content seed, mobile file, deployment or push was included. Explicit release preparation/verification of Help/post/comment/report indexes is required before updating running services; core readiness does not certify these features. Existing dependency advisories and application policy findings remain outside production acceptance. B3/F1 physical-phone capture/restart/backend-unavailable reopen proof remains incomplete; native authentication/video/AI/exports, other browser engines and deployment-wide retention are outside this evidence.
+
+Exact changed website files:
+
+```text
+AGENTS.md
+README.md
+contracts/schema.graphql
+docs/Verification.md
+scripts/verify-auth.mjs
+scripts/verify-discussion.mjs
+src/components/AdminLayout.tsx
+src/discussion/CommentsManager.tsx
+src/discussion/PublicComments.tsx
+src/discussion/ReportsManager.tsx
+src/discussion/shared.ts
+src/graphql/discussion.graphql
+src/graphql/generated.ts
+src/pages/account/comments.tsx
+src/pages/account/reports.tsx
+src/pages/admin/comments.tsx
+src/pages/admin/reports.tsx
+src/pages/community/[id].tsx
+src/styles/globals.css
+```

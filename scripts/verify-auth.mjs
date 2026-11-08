@@ -22,7 +22,9 @@ if (process.platform !== "darwin")
     "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
   );
 const development = process.argv.includes("--dev");
-const communityMode = process.argv.includes("--community");
+const discussionFocus = process.argv.includes("--discussion-focus");
+const discussionMode = process.argv.includes("--discussion") || discussionFocus;
+const communityMode = process.argv.includes("--community") || discussionMode;
 const helpMode = process.argv.includes("--help") || communityMode;
 const adminMode = process.argv.includes("--admin") || helpMode;
 const existingTls = process.argv.includes("--local-cert") ? localTls() : null;
@@ -214,6 +216,7 @@ try {
     BROWSER_TEST_KEY: key,
     BROWSER_TEST_HTTP: development ? "1" : "0",
     BROWSER_TEST_ADMIN: adminMode ? "1" : "0",
+    BROWSER_TEST_DISCUSSION: discussionMode ? "1" : "0",
   };
   backendHost = fork(join(backend, "scripts/browser-auth-host.ts"), [], {
     cwd: backend,
@@ -235,7 +238,11 @@ try {
     NEXT_PUBLIC_AUTH_API_ORIGIN: apiOrigin,
     SMARTBORD_API_HTTP_ORIGIN: ready.origin,
     ...(development
-      ? { SMARTBORD_NEXT_DIST_DIR: ".next/auth-dev-verification" }
+      ? {
+          SMARTBORD_NEXT_DIST_DIR:
+            process.env.SMARTBORD_NEXT_DIST_DIR ||
+            ".next/auth-dev-verification",
+        }
       : {}),
     NODE_EXTRA_CA_CERTS: ca,
     WEB_TLS_CERT: cert,
@@ -696,7 +703,7 @@ try {
       }
     },
   );
-  if (communityMode) {
+  if (communityMode && !discussionFocus) {
     const { verifyCommunity } = await import("./verify-community.mjs");
     await verifyCommunity({
       browser,
@@ -708,11 +715,23 @@ try {
       temp,
     });
   }
-  if (helpMode) {
+  if (discussionMode) {
+    const { verifyDiscussion } = await import("./verify-discussion.mjs");
+    await verifyDiscussion({
+      browser,
+      webOrigin,
+      api,
+      ready,
+      fixture,
+      check,
+      temp,
+    });
+  }
+  if (helpMode && !discussionFocus) {
     const { verifyHelp } = await import("./verify-help.mjs");
     await verifyHelp({ browser, webOrigin, api, ready, check, temp });
   }
-  if (adminMode) {
+  if (adminMode && !discussionFocus) {
     const { verifyAdmin } = await import("./verify-admin.mjs");
     await verifyAdmin({ browser, webOrigin, api, ready, fixture, check, temp });
   }
@@ -730,9 +749,16 @@ try {
       "home-desktop",
       "login-mobile",
       "account-desktop",
-      ...(adminMode ? ["admin-desktop", "admin-mobile"] : []),
-      ...(helpMode ? ["help-desktop", "help-mobile", "help-editor"] : []),
-      ...(communityMode
+      ...(adminMode && !discussionFocus
+        ? ["admin-desktop", "admin-mobile"]
+        : []),
+      ...(helpMode && !discussionFocus
+        ? ["help-desktop", "help-mobile", "help-editor"]
+        : []),
+      ...(discussionMode
+        ? ["discussion-public", "discussion-editor", "discussion-reports"]
+        : []),
+      ...(communityMode && !discussionFocus
         ? ["community-desktop", "community-mobile", "community-editor"]
         : []),
     ])

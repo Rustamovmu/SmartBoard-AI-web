@@ -165,7 +165,7 @@ export function AdminLayout({
           <span className="eyebrow">
             {requiredRole === "ADMIN"
               ? "PLATFORM ADMINISTRATION"
-              : "YOUR COMMUNITY POSTS"}
+              : "YOUR COMMUNITY"}
           </span>
           <nav
             aria-label={
@@ -197,10 +197,22 @@ export function AdminLayout({
                 <Link href="/admin/community" prefetch={false}>
                   Community moderation
                 </Link>
+                <Link href="/admin/comments" prefetch={false}>
+                  Comment moderation
+                </Link>
+                <Link href="/admin/reports" prefetch={false}>
+                  Report review
+                </Link>
               </>
             )}
             <Link href="/account/posts" prefetch={false}>
               Your posts
+            </Link>
+            <Link href="/account/comments" prefetch={false}>
+              Your comments
+            </Link>
+            <Link href="/account/reports" prefetch={false}>
+              Your reports
             </Link>
             <Link href="/community" prefetch={false}>
               Read community

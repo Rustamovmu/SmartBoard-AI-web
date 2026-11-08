@@ -1,0 +1,115 @@
+fragment ManagedComment on ManagedCommunityComment {
+  id
+  postId
+  authorUserId
+  publicDisplayName
+  bodyMarkdown
+  state
+  revision
+  createdAt
+  updatedAt
+  publishedAt
+  removedAt
+  removalReason
+}
+fragment ReportFields on CommunityReport {
+  id
+  targetType
+  targetId
+  postId
+  reason
+  state
+  revision
+  createdAt
+  updatedAt
+}
+query CommunityComments($input: CommunityCommentsInput!) {
+  communityComments(input: $input) {
+    items {
+      id
+      postId
+      publicDisplayName
+      bodyMarkdown
+      publishedAt
+      updatedAt
+    }
+    page
+    pageSize
+    total
+  }
+}
+query MyCommunityComments($input: ManagedCommunityCommentsInput!) {
+  myCommunityComments(input: $input) {
+    items {
+      ...ManagedComment
+    }
+    page
+    pageSize
+    total
+  }
+}
+query AdminCommunityComments($input: ManagedCommunityCommentsInput!) {
+  adminCommunityComments(input: $input) {
+    items {
+      ...ManagedComment
+    }
+    page
+    pageSize
+    total
+  }
+}
+query MyCommunityComment($id: ID!) {
+  myCommunityComment(id: $id) {
+    ...ManagedComment
+  }
+}
+query AdminCommunityComment($id: ID!) {
+  adminCommunityComment(id: $id) {
+    ...ManagedComment
+  }
+}
+mutation CreateCommunityComment($input: CreateCommunityCommentInput!) {
+  createCommunityComment(input: $input) {
+    ...ManagedComment
+  }
+}
+mutation UpdateCommunityComment($input: UpdateCommunityCommentInput!) {
+  updateCommunityComment(input: $input) {
+    ...ManagedComment
+  }
+}
+mutation AdminModerateCommunityComment($input: ModerateCommunityCommentInput!) {
+  adminModerateCommunityComment(input: $input) {
+    ...ManagedComment
+  }
+}
+query MyCommunityReports($input: CommunityReportsInput!) {
+  myCommunityReports(input: $input) {
+    items {
+      ...ReportFields
+    }
+    page
+    pageSize
+    total
+  }
+}
+query AdminCommunityReports($input: CommunityReportsInput!) {
+  adminCommunityReports(input: $input) {
+    items {
+      ...ReportFields
+    }
+    page
+    pageSize
+    total
+  }
+}
+mutation CreateCommunityReport($input: CreateCommunityReportInput!) {
+  createCommunityReport(input: $input) {
+    ...ReportFields
+  }
+}
+mutation AdminReviewCommunityReport($input: ReviewCommunityReportInput!) {
+  adminReviewCommunityReport(input: $input) {
+    ...ReportFields
+  }
+}
