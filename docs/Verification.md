@@ -243,3 +243,13 @@ src/styles/globals.css
 ```
 
 Dependency locks are unchanged. No generated build output, credentials or lecture content is included in the focused local commit.
+
+## 2026-11-08 — Taken username signup message
+
+Signup now displays “This username is already in use. Please choose a different username.” after a confirmed username collision. The client reads only the whitelisted USERNAME_TAKEN code on signup HTTP 409 and uses its own fixed text, never an arbitrary response message. Other conflicts keep the existing generic account message. The existing alert/form preserves entered details on rejection; the user can edit the username and deliberately submit again. No live availability endpoint/polling, auto-resubmission, schema/dependency/storage change or application setup was added.
+
+The browser username suite adds a seventh group covering uppercase taken-name submission, real 409/code, the exact message on /signup, preserved full name/email and enabled retry controls, a separate generic email conflict, and successful signup using a different username. The preceding auth/admin/username groups are retained. Both independent strict-HTTPS runs passed 26 grouped scenarios (nine auth, ten admin, seven username), using the development launcher/API bridge and an isolated production build. Type/lint/generated-schema checks, three startup tests, whitespace review and the production build passed. Both harnesses confirmed cleanup of owned hosts/connections/browser contexts/files and exact disposable databases; existing local certificates/trust were preserved. No browser check failed or assertion was relaxed in this increment. The backend regression separately exposed an existing minute-boundary rate-fixture failure; its correction and final results are recorded in backend verification.
+
+All test identities belong to exact initially empty guarded disposable databases. No application account, administrator, password, phone file or real content was changed. Existing development hosts and persistent certificates/trust are preserved; owned temporary resources are closed in the harness. Broader content/recovery browser groups were not rerun for this narrowly scoped signup response change. Full backend auth regression is recorded in its dated username verification.
+
+Changed website paths: AGENTS.md, README.md, docs/Verification.md, src/auth/client.ts and scripts/verify-username.mjs. No build output, credentials, private media or lockfile change belongs in the focused local commit.

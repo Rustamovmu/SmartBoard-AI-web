@@ -172,6 +172,75 @@ export async function verifyUsername({
         await page.screenshot({ path: join(temp, "username-desktop.png") });
       },
     );
+    await fresh();
+    await check(
+      "Signup explains a taken username, preserves details, and accepts a different choice",
+      async () => {
+        const context = await browser.newContext({ ignoreHTTPSErrors: false });
+        contexts.push(context);
+        const signupPage = await context.newPage();
+        signupPage.on("pageerror", () =>
+          diagnostics.push("Signup feedback runtime error"),
+        );
+        const email = `signup-feedback-${ready.database.slice(4)}@example.test`;
+        const different = "signup_" + ready.database.slice(4, 20);
+        await signupPage.goto(`${webOrigin}/signup`);
+        await signupPage
+          .getByLabel("Full name")
+          .fill("Synthetic Signup Feedback");
+        await signupPage
+          .getByLabel("Username", { exact: true })
+          .fill(chosen.toUpperCase());
+        await signupPage.getByLabel("Email address").fill(email);
+        await signupPage.getByLabel("Password", { exact: true }).fill(password);
+        const rejected = signupPage.waitForResponse(
+          (r) => r.url() === `${api}/auth/signup`,
+        );
+        await signupPage
+          .getByRole("button", { name: "Create account", exact: true })
+          .click();
+        const response = await rejected;
+        assert.equal(response.status(), 409);
+        assert.equal((await response.json()).code, "USERNAME_TAKEN");
+        await expect(
+          signupPage.getByRole("main").getByRole("alert"),
+        ).toHaveText(
+          "This username is already in use. Please choose a different username.",
+        );
+        await expect(signupPage).toHaveURL(`${webOrigin}/signup`);
+        await expect(signupPage.getByLabel("Full name")).toHaveValue(
+          "Synthetic Signup Feedback",
+        );
+        await expect(signupPage.getByLabel("Email address")).toHaveValue(email);
+        await expect(
+          signupPage.getByRole("button", {
+            name: "Create account",
+            exact: true,
+          }),
+        ).toBeEnabled();
+        await signupPage
+          .getByLabel("Username", { exact: true })
+          .fill(different);
+        // An email conflict must retain the generic account message.
+        await signupPage.getByLabel("Email address").fill(accounts[0].email);
+        await signupPage
+          .getByRole("button", { name: "Create account", exact: true })
+          .click();
+        await expect(
+          signupPage.getByRole("main").getByRole("alert"),
+        ).toHaveText(
+          "This account could not be created. Try signing in instead.",
+        );
+        await signupPage.getByLabel("Email address").fill(email);
+        await signupPage
+          .getByRole("button", { name: "Create account", exact: true })
+          .click();
+        await expect(signupPage).toHaveURL(`${webOrigin}/account`);
+        await expect(signupPage.locator("[data-account-username]")).toHaveText(
+          different,
+        );
+      },
+    );
     assert.deepEqual(diagnostics, []);
   } finally {
     await Promise.all(contexts.map((ctx) => ctx.close()));

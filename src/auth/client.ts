@@ -70,10 +70,20 @@ async function request<T>(
       429: "Too many attempts. Wait a minute before trying again.",
       503: "SmartBord is temporarily unavailable. Please try again later.",
     };
-    throw new AuthError(
-      response.status,
-      messages[response.status] || "SmartBord could not complete this request.",
-    );
+    let message =
+      messages[response.status] || "SmartBord could not complete this request.";
+    if (path === "signup" && response.status === 409) {
+      const error: unknown = await response.json().catch(() => null);
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "USERNAME_TAKEN"
+      )
+        message =
+          "This username is already in use. Please choose a different username.";
+    }
+    throw new AuthError(response.status, message);
   }
   return response.json() as Promise<T>;
 }
