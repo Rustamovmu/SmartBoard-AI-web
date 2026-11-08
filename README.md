@@ -6,7 +6,7 @@ Next.js **16.4.4**, React **19.3.0**, TypeScript and the **Pages Router**. This 
 
 SmartBord home/layout, `/signup`, `/login` and `/account`. Signup/login use the actual Nest HTTP authentication contract. The account page validates current identity server-side on each request, sends `private, no-store`, and renders only a checking/error shell when identity cannot be verified. Browser revalidation handles expired access under a shared Web Lock. Logout revokes the presented browser family and clears backend cookies. Other tabs recheck on session broadcasts, visibility changes and a visible-page one-minute interval.
 
-Credentials stay in backend-issued Secure/HttpOnly/SameSite=Strict `__Host-` cookies; JavaScript receives no access/refresh token. Each POST obtains a CSRF nonce and supplies `X-CSRF-Token`. All cookie writes, including CSRF issuance, share a cross-tab lock. Browser storage contains only a credential-free interrupted-refresh marker. A lost/ambiguous refresh response requires a fresh login instead of retrying a potentially spent credential.
+Credentials stay in backend-issued Secure/HttpOnly/SameSite=Strict `__Host-` cookies; JavaScript receives no access/refresh token. Each POST obtains a CSRF nonce and supplies `X-CSRF-Token`. All cookie writes, including CSRF issuance, share a cross-tab lock. Browser storage contains only a credential-free session-uncertainty marker. A lost/ambiguous refresh response requires a fresh login instead of retrying a potentially spent credential.
 
 Private lectures/photos/notes stay on the user's device. This website has no private-media library, upload, phone sync or remote-delete operation. Public Help/FAQ/announcements and protected Help administration are now implemented. Community posts now provide public reading, author publication and administrator moderation. Community comments and private reason-coded reports now add owner management and administrator review. Native authentication, capture and AI remain future work. B3/F1 physical-phone capture, restart and backend-unavailable reopen proof remains incomplete. See [verification](docs/Verification.md) for actual evidence and limitations.
 
@@ -141,3 +141,18 @@ yarn test:web --local-cert --discussion
 ```
 
 `--discussion` includes auth/admin/Help/community regressions. `--discussion-focus` runs auth plus discussion for iteration only. The expanded mode bounds its disposable backend to 30 minutes to accommodate conservative pacing; ordinary modes retain 15 minutes. Fixtures can remove/restore only fixed comment/report indexes through private guarded IPC, never a production endpoint. Prepare/verify new `communityComments` and `reports` indexes explicitly with release setup tooling before updating running services. No application schema setup, real administrator, content seed, phone change or deployment is included.
+
+## Password reset
+
+The login page links to `/reset-password`. Ask the operator who administers your account to verify ownership and privately provide a recovery code, then paste it into the masked form and enter a new password twice. Codes expire after 15 minutes and are single use. There is no automated email-request form or web proof issuer. New passwords use 12–128 characters and preserve spaces.
+
+The form uses POST, rejects URL prefill and sends only the code/new password to the existing backend reset endpoint over trusted HTTPS with CSRF and the shared cross-tab auth lock. Inputs stay out of React state, SSR props, browser storage and logs; they clear after attempts, history events and session notifications. Invalid/expired/used codes have one generic error. Pending requests cannot be duplicated. A lost/unknown response never retries the code automatically: try signing in with the new password, or ask the operator for a newly issued code before explicitly starting over. The existing credential-free uncertainty marker also prevents unsafe session refresh after an ambiguous reset.
+
+Success ends all sessions for the recovered account, clears this browser's auth cookies even if it belonged to another account, and requires normal login. Other accounts' server sessions and private device files remain intact. No real-account issuance/reset is performed by verification. See the [recovery contract](../SmartBord-AI/contracts/password-recovery.md).
+
+```bash
+yarn test:web --dev --local-cert --recovery
+yarn test:web --local-cert --recovery
+```
+
+`--recovery` includes the existing auth regression groups and uses three fixed synthetic recovery identities in an exact, initially empty disposable database. Proofs are issued/expired only by private guarded parent IPC and are never saved in command arguments, URLs, reports or artifacts. Use an isolated `SMARTBORD_NEXT_DIST_DIR` when running independent verifications concurrently; keep user-started development hosts/caches untouched. These checks do not certify human ownership verification, email/clipboard delivery, real-account recovery, native files or production hosting.

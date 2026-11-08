@@ -187,6 +187,65 @@ export async function signOut() {
   });
 }
 
+// Reset is a single-use credential write. It shares the auth lock without
+// requiring /me or refreshing an existing session.
+export class PasswordResetError extends AuthError {
+  constructor(
+    status: number,
+    message: string,
+    public uncertain: boolean,
+  ) {
+    super(status, message);
+  }
+}
+export function resetPassword(input: {
+  recoveryToken: string;
+  password: string;
+}) {
+  return exclusive(async () => {
+    const { csrfToken } = await request<{ csrfToken: string }>("csrf");
+    const previousUncertainty = localStorage.getItem(uncertainKey);
+    // A lost reset response may have cleared cookies or revoked this account.
+    // Never let another tab attempt refresh after that ambiguous credential write.
+    localStorage.setItem(uncertainKey, "1");
+    try {
+      const result = await request<{ success: boolean }>(
+        "password/reset",
+        input,
+        csrfToken,
+      );
+      if (result.success !== true)
+        throw new AuthError(0, "Unconfirmed reset response.");
+      try {
+        localStorage.removeItem(uncertainKey);
+      } catch {
+        /* Fresh login is still safe. */
+      }
+      announce("signed-out");
+    } catch (cause) {
+      const status = cause instanceof AuthError ? cause.status : 0;
+      const uncertain = status === 0 || status >= 500;
+      if (!uncertain) {
+        if (previousUncertainty === null) localStorage.removeItem(uncertainKey);
+        else localStorage.setItem(uncertainKey, previousUncertainty);
+      } else announce("session-uncertain");
+      throw new PasswordResetError(
+        status,
+        uncertain
+          ? "Unable to confirm whether your password changed. Do not repeat this recovery code."
+          : status === 401
+            ? "This recovery code is invalid, expired, already used, or no longer available. Ask your operator for a new code."
+            : status === 429
+              ? "Too many reset attempts. Wait a minute before trying with an available code."
+              : status === 400
+                ? "The reset was rejected. Check the complete recovery code and use a new password of 12–128 characters."
+                : "The reset was refused. Reload the secure page and check your connection before trying again.",
+        uncertain,
+      );
+    }
+  });
+}
+
 export function announce(event: string) {
   if (typeof BroadcastChannel === "undefined") return;
   const channel = new BroadcastChannel("smartbord:session");

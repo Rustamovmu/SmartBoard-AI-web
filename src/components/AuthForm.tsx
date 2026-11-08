@@ -166,6 +166,11 @@ export function AuthForm({ mode }: { mode: "signup" | "login" }) {
               {pending ? "Please wait while your request is processed." : ""}
             </p>
           </form>
+          {!signup && (
+            <p className="form-switch">
+              <Link href="/reset-password">Reset your password</Link>
+            </p>
+          )}
           <p className="form-switch">
             {signup ? "Already have an account?" : "New around here?"}{" "}
             <Link href={signup ? "/login" : "/signup"}>

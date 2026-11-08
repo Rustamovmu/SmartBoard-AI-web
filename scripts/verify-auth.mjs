@@ -22,6 +22,7 @@ if (process.platform !== "darwin")
     "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
   );
 const development = process.argv.includes("--dev");
+const recoveryMode = process.argv.includes("--recovery");
 const discussionFocus = process.argv.includes("--discussion-focus");
 const discussionMode = process.argv.includes("--discussion") || discussionFocus;
 const communityMode = process.argv.includes("--community") || discussionMode;
@@ -107,13 +108,13 @@ async function fixture(kind, userId) {
       if (data.id !== id) return;
       clearTimeout(timer);
       backendHost.off("message", listener);
-      if (data.kind === "done") resolvePromise();
+      if (data.kind === "done") resolvePromise(data);
       else reject(new Error("Fixture command rejected"));
     }
     backendHost.on("message", listener);
   });
   backendHost.send({ kind, userId, id });
-  await done;
+  return await done;
 }
 async function check(name, action) {
   activeCheck = name;
@@ -216,6 +217,7 @@ try {
     BROWSER_TEST_KEY: key,
     BROWSER_TEST_HTTP: development ? "1" : "0",
     BROWSER_TEST_ADMIN: adminMode ? "1" : "0",
+    BROWSER_TEST_RECOVERY: recoveryMode ? "1" : "0",
     BROWSER_TEST_DISCUSSION: discussionMode ? "1" : "0",
   };
   backendHost = fork(join(backend, "scripts/browser-auth-host.ts"), [], {
@@ -735,6 +737,18 @@ try {
     const { verifyAdmin } = await import("./verify-admin.mjs");
     await verifyAdmin({ browser, webOrigin, api, ready, fixture, check, temp });
   }
+  if (recoveryMode) {
+    const { verifyRecovery } = await import("./verify-recovery.mjs");
+    await verifyRecovery({
+      browser,
+      webOrigin,
+      api,
+      ready,
+      fixture,
+      check,
+      temp,
+    });
+  }
   assert.deepEqual(errors, []);
   assert.deepEqual(devWarnings, []);
   if (abort.signal.aborted) interrupted();
@@ -749,6 +763,7 @@ try {
       "home-desktop",
       "login-mobile",
       "account-desktop",
+      ...(recoveryMode ? ["recovery-desktop", "recovery-mobile"] : []),
       ...(adminMode && !discussionFocus
         ? ["admin-desktop", "admin-mobile"]
         : []),

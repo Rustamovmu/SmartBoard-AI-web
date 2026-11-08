@@ -168,3 +168,37 @@ src/pages/admin/reports.tsx
 src/pages/community/[id].tsx
 src/styles/globals.css
 ```
+
+## 2026-11-08 — Operator-assisted password reset website
+
+Added `/reset-password` and its login-page link, using the existing backend proof-consumption endpoint without a new production API, email request, proof issuer, account lookup or automatic login. The operator still independently verifies account ownership and delivers a 15-minute single-use code privately. The form masks manual code entry, confirms 12–128-character passwords locally, preserves spaces, explicitly uses POST and stays disabled until the configured HTTPS origin is verified. Query parameters redirect to the bare route and fragments are discarded without credential prefill; SSR is private/no-store with empty props.
+
+Proofs/passwords stay out of React state, page props, URLs, storage, logs and artifacts. Fields clear after server attempts, pagehide/pageshow and session broadcasts. The reset uses the existing cross-tab lock for CSRF and the full response without `/me` or refresh. Known success clears auth cookies through the backend, clears the credential-free uncertainty marker, broadcasts session invalidation and requires normal login. It explains all-session revocation for the target and caller-cookie clearing when another account was signed in. Other accounts' independent server sessions remain valid. No device-file operation exists.
+
+Malformed/mismatched local fields send no reset request. Invalid/expired/used/superseded/inactive proofs share a generic UI response; 403/rate-limit errors are retryable with cleared fields. Unknown/5xx/unreadable/lost responses lock the form and never replay the code. The user can try normal login with the new password or obtain a newly issued code before explicitly starting over. The existing credential-free uncertainty marker also prevents refresh after an ambiguous reset, while deterministic 4xx errors restore any marker that predated the attempt.
+
+Inspected TripLink's AccountRecovery component read only. Adapted form confirmation/normal-login boundaries, not its fragment credentials, email issuance, username/recovery-code schema, dependencies or password lengths. This project's proof-in-body-only contract is authoritative. No dependency, lockfile or GraphQL operation/schema change was required.
+
+`yarn test:web --dev --local-cert --recovery` and production `yarn test:web --local-cert --recovery` each passed 20 grouped Chromium scenarios (nine existing auth groups and eleven recovery groups), twice during iteration; the final pair additionally verifies the POST method. Both transports use strict certificate validation, real backend/MongoDB, unchanged rate budgets and guarded exact initially empty disposable databases. Explicit recovery mode creates only three fixed synthetic identities (two USER, one ADMIN) and issues/expires proofs for their whitelisted IDs through private parent IPC. No HTTP/GraphQL issuer or public fixture route is added, and no proof is passed in command arguments or persisted in artifacts.
+
+Recovery groups cover login entry/no-store/URL stripping; local confirmation/malformed validation with no request and history/session clearing; generic invalid/expired/superseded errors; actual success, cookie clearing, independent/cross-tab target session revocation, old-password rejection, space-preserving new-password login and replay refusal; resetting while signed into another account without revoking independent bystander sessions; actual CSRF rejection preserving an existing uncertainty marker and the same proof remaining usable, including ADMIN recovery; actual five-per-proof rate exhaustion; CSRF-setup outage versus synthetic 503 ambiguity; aborted and real committed-but-lost responses without replay, with subsequent real login; inactive-account generic rejection and unavailable Web Locks sending no credentials; and HTTP-disabled fields, responsive controls, no secret storage/SSR/URL data and safe masked screenshots.
+
+Website type/lint/generated-schema consistency checks and three startup/socket tests passed. Both production test builds passed; the final normal-origin build passed in an isolated directory to preserve the user's running development cache. Blank desktop/mobile form screenshots were visually inspected; mobile heading whitespace was corrected, then a separate read-only actual-localhost browser check passed POST method, empty fields, readable heading, enabled control and no horizontal overflow. That check sent no auth request, acquired no cookie and submitted no code. It closed its own browser and preserved existing project hosts.
+
+The first browser attempt stopped because the validation locator also matched Next's route announcer. It was scoped to main content; the failed attempt confirmed exact DB/host cleanup and is not passing evidence. Backend regression additionally exposed an existing first-bucket counter race: direct concurrency tests reproduced false rejection inside available budgets; a bounded same-predicate retry fixes that independently. See [rate-limit evidence](../../SmartBord-AI/docs/Rate_limit_verification.md) and [backend progress](../../SmartBord-AI/docs/Development_progress.md) for final backend checks: lint/type/build, 103 unit tests, 18 HTTP tests, full integration 124 tests across eight suites, and Postman CLI 83 requests/322 assertions all passed. No assertion, proof policy, TLS requirement or limit was weakened.
+
+Every completed browser run confirmed exact disposable database removal and stopped its own hosts/connections/browser contexts, preserving existing localhost certificates/trust and unrelated processes. No actual-account recovery proof was issued/consumed, application account/password/content mutated, administrator bootstrapped in the application DB, deployment, push, native file change or physical-phone proof performed. Human verification, real operator delivery/clipboard behavior, email delivery, native UI/secure storage, other browser engines and production hosting remain outside this acceptance.
+
+Exact changed website files:
+
+```text
+AGENTS.md
+README.md
+docs/Verification.md
+scripts/verify-auth.mjs
+scripts/verify-recovery.mjs
+src/auth/client.ts
+src/components/AuthForm.tsx
+src/components/PasswordResetForm.tsx
+src/pages/reset-password.tsx
+```
