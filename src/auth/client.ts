@@ -104,7 +104,13 @@ const uncertainKey = "smartbord:refresh-uncertain";
 
 export function signIn(
   mode: "signup" | "login",
-  input: { email: string; password: string; name?: string },
+  input: {
+    email?: string;
+    identifier?: string;
+    username?: string;
+    password: string;
+    name?: string;
+  },
 ) {
   return exclusive(async () => {
     try {
@@ -116,7 +122,7 @@ export function signIn(
       if (error instanceof AuthError && error.status === 401) {
         throw new AuthError(
           401,
-          "Email or password is incorrect, or this account is unavailable.",
+          "Username, email or password is incorrect, or this account is unavailable.",
         );
       }
       throw error;

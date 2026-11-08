@@ -1189,3 +1189,35 @@ dialog p {
 .discussion-list h3 {
   overflow-wrap: anywhere;
 }
+
+.username-chooser {
+  margin: 1.5rem 0;
+  padding-top: 1rem;
+  border-top: 1px solid #d9dfd5;
+}
+.username-chooser fieldset {
+  border: 0;
+  padding: 0;
+  margin: 1rem 0;
+  min-width: 0;
+}
+.username-chooser label {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.username-chooser input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #b7c1b0;
+  border-radius: 0.5rem;
+  background: white;
+  font: inherit;
+}
+.username-chooser p {
+  overflow-wrap: anywhere;
+}
+[data-account-username] {
+  overflow-wrap: anywhere;
+}

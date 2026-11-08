@@ -95,7 +95,7 @@ export async function verifyHelp({
   async function login(ctx, user) {
     const page = await ctx.newPage();
     await page.goto(`${webOrigin}/login`);
-    await page.getByLabel("Email address").fill(user.email);
+    await page.getByLabel("Username or email").fill(user.email);
     await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Log in", exact: true }).click();
     await expect(page).toHaveURL(`${webOrigin}/account`);

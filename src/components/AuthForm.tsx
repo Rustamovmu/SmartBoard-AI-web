@@ -25,7 +25,12 @@ export function AuthForm({ mode }: { mode: "signup" | "login" }) {
     const data = new FormData(form);
     try {
       await signIn(mode, {
-        email: String(data.get("email")).trim(),
+        ...(signup
+          ? {
+              email: String(data.get("email")).trim(),
+              username: String(data.get("username")).trim(),
+            }
+          : { identifier: String(data.get("identifier")).trim() }),
         password: String(data.get("password")),
         ...(signup ? { name: String(data.get("name")).trim() } : {}),
       });
@@ -100,7 +105,7 @@ export function AuthForm({ mode }: { mode: "signup" | "login" }) {
               You’re logged out. Your device files are unchanged.
             </p>
           )}
-          <form onSubmit={submit} aria-busy={pending}>
+          <form method="post" onSubmit={submit} aria-busy={pending}>
             <fieldset disabled={pending || securePage !== true}>
               {signup && (
                 <label>
@@ -115,15 +120,41 @@ export function AuthForm({ mode }: { mode: "signup" | "login" }) {
                   />
                 </label>
               )}
+              {signup && (
+                <>
+                  <label>
+                    Username
+                    <input
+                      name="username"
+                      autoComplete="username"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      required
+                      minLength={3}
+                      maxLength={30}
+                      pattern="[A-Za-z][A-Za-z0-9_]{2,29}"
+                      aria-describedby="signup-username-help"
+                    />
+                  </label>
+                  <p id="signup-username-help" className="field-help">
+                    Choose a permanent username: 3–30 letters, numbers or
+                    underscores, starting with a letter. Letter case is ignored.
+                  </p>
+                </>
+              )}
               <label>
-                Email address
+                {signup ? "Email address" : "Username or email"}
                 <input
-                  name="email"
-                  type="email"
-                  autoComplete="email"
+                  name={signup ? "email" : "identifier"}
+                  type={signup ? "email" : "text"}
+                  autoComplete={signup ? "email" : "username"}
+                  autoCapitalize="none"
+                  spellCheck={false}
                   required
                   maxLength={254}
-                  placeholder="you@example.com"
+                  placeholder={
+                    signup ? "you@example.com" : "Your username or email"
+                  }
                 />
               </label>
               <label>

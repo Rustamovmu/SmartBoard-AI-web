@@ -3,6 +3,7 @@
 export interface Account {
   id: string;
   email: string;
+  username: string | null;
   name: string;
   role: "USER" | "ADMIN";
   status: "ACTIVE" | "BLOCKED" | "DELETED";

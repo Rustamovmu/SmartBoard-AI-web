@@ -1,9 +1,27 @@
 query AdminAccounts($input: AccountsInput!) {
   adminAccounts(input: $input) {
-    items { id email name role status createdAt }
-    page pageSize total
+    items {
+      id
+      email
+      username
+      name
+      role
+      status
+      createdAt
+    }
+    page
+    pageSize
+    total
   }
 }
 mutation AdminUpdateAccountAccess($input: UpdateAccountAccessInput!) {
-  adminUpdateAccountAccess(input: $input) { id email name role status createdAt }
+  adminUpdateAccountAccess(input: $input) {
+    id
+    email
+    username
+    name
+    role
+    status
+    createdAt
+  }
 }

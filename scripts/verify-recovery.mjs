@@ -93,7 +93,7 @@ export async function verifyRecovery({
   async function login(ctx, user, password) {
     const page = await ctx.newPage();
     await page.goto(`${webOrigin}/login`);
-    await page.getByLabel("Email address").fill(user.email);
+    await page.getByLabel("Username or email").fill(user.email);
     await page.getByLabel("Password", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Log in", exact: true }).click();
     await expect(page).toHaveURL(`${webOrigin}/account`);
@@ -276,14 +276,14 @@ export async function verifyRecovery({
         await expect(resetting.locator("input")).toHaveCount(0);
         const checking = await anonymous.newPage();
         await checking.goto(`${webOrigin}/login`);
-        await checking.getByLabel("Email address").fill(target.email);
+        await checking.getByLabel("Username or email").fill(target.email);
         await checking.getByLabel("Password", { exact: true }).fill(passwordA);
         await checking
           .getByRole("button", { name: "Log in", exact: true })
           .click();
         await expect(
           checking.getByRole("main").getByRole("alert"),
-        ).toContainText("Email or password is incorrect");
+        ).toContainText("Username, email or password is incorrect");
         passwordA = next;
         owner = await login(await context(), target, passwordA);
         await page.goto(`${webOrigin}/reset-password`);

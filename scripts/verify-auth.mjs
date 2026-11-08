@@ -22,12 +22,17 @@ if (process.platform !== "darwin")
     "This trust setup currently supports macOS only; use an already trusted local CA on other platforms.",
   );
 const development = process.argv.includes("--dev");
+const usernameMode = process.argv.includes("--username");
 const recoveryMode = process.argv.includes("--recovery");
+if (usernameMode && recoveryMode)
+  throw new Error(
+    "Run --username and --recovery separately: administrator checks require their fixed fixture population.",
+  );
 const discussionFocus = process.argv.includes("--discussion-focus");
 const discussionMode = process.argv.includes("--discussion") || discussionFocus;
 const communityMode = process.argv.includes("--community") || discussionMode;
 const helpMode = process.argv.includes("--help") || communityMode;
-const adminMode = process.argv.includes("--admin") || helpMode;
+const adminMode = process.argv.includes("--admin") || helpMode || usernameMode;
 const existingTls = process.argv.includes("--local-cert") ? localTls() : null;
 if (!existingTls && !process.argv.includes("--trust-local-ca"))
   throw new Error(
@@ -368,6 +373,13 @@ try {
       await page.goto(`${webOrigin}/signup`);
       await expect(page).toHaveTitle("Create an account · SmartBord");
       await page.getByLabel("Full name").fill("Synthetic Browser Member");
+      await page.getByLabel("Username", { exact: true }).fill(
+        "web_" +
+          email
+            .split("@")[0]
+            .replace(/[^a-z0-9]/gi, "")
+            .slice(-20),
+      );
       await page.getByLabel("Email address").fill(email);
       await page.getByLabel("Password", { exact: true }).fill(password);
       // Read the real signup body before releasing it: success navigates away.
@@ -546,13 +558,13 @@ try {
   await check(
     "Real login, wrong password, lost refresh response and current blocking",
     async () => {
-      await page.getByLabel("Email address").fill(email);
+      await page.getByLabel("Username or email").fill(email);
       await page
         .getByLabel("Password", { exact: true })
         .fill("Incorrect-password");
       await page.getByRole("button", { name: "Log in" }).click();
       await expect(page.getByRole("main").getByRole("alert")).toContainText(
-        "Email or password is incorrect",
+        "Username, email or password is incorrect",
       );
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Log in" }).click();
@@ -617,7 +629,7 @@ try {
       assert.equal(interruptedRotations, 1);
       await recoveryTab.close();
       await page.unroute(`${api}/auth/refresh`);
-      await page.getByLabel("Email address").fill(email);
+      await page.getByLabel("Username or email").fill(email);
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Log in" }).click();
       await expect(page).toHaveURL(`${webOrigin}/account`);
@@ -651,7 +663,7 @@ try {
         if (request.url().startsWith(`${api}/auth/`)) authCalls++;
       });
       await unsupportedPage.goto(`${webOrigin}/login`);
-      await unsupportedPage.getByLabel("Email address").fill(email);
+      await unsupportedPage.getByLabel("Username or email").fill(email);
       await unsupportedPage
         .getByLabel("Password", { exact: true })
         .fill(password);
@@ -736,6 +748,10 @@ try {
   if (adminMode && !discussionFocus) {
     const { verifyAdmin } = await import("./verify-admin.mjs");
     await verifyAdmin({ browser, webOrigin, api, ready, fixture, check, temp });
+  }
+  if (usernameMode) {
+    const { verifyUsername } = await import("./verify-username.mjs");
+    await verifyUsername({ browser, webOrigin, api, ready, check, temp });
   }
   if (recoveryMode) {
     const { verifyRecovery } = await import("./verify-recovery.mjs");

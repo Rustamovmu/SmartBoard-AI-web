@@ -1,0 +1,22 @@
+query CurrentAccount {
+  currentAccount {
+    id
+    email
+    username
+    name
+    role
+    status
+    createdAt
+  }
+}
+mutation SetMyUsername($input: SetMyUsernameInput!) {
+  setMyUsername(input: $input) {
+    id
+    email
+    username
+    name
+    role
+    status
+    createdAt
+  }
+}

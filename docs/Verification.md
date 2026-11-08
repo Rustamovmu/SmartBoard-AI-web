@@ -202,3 +202,44 @@ src/components/AuthForm.tsx
 src/components/PasswordResetForm.tsx
 src/pages/reset-password.tsx
 ```
+
+## 2026-11-08 — Username or email login
+
+Website signup now requires a separate permanent username; login accepts username or email through the backend identifier field. Existing owners retain email login and choose once on /account with an explicit permanence confirmation. Username is nullable for legacy accounts and displayed only in authenticated account data; full names and public community attribution remain separate. The protected mutation uses the existing account-bound Apollo client, cross-tab auth/CSRF lock, current-account checks and no-cache behavior. Collisions/uncertain responses lock writes until read-only reconciliation; no write is automatically replayed. Selection changes no password, role, status, auth version, recovery proof, existing session or phone file.
+
+Backend compatibility: old email login payloads and signup without username still work. Username values normalize to lowercase, ASCII 3–30 letters/numbers/underscores starting with a letter; the unique sparse index preserves legacy absent values. Email/username aliases share an account login budget. Application index setup was explicitly performed additively without real-account backfill/choice or test fixtures; see [backend contract](../../SmartBord-AI/contracts/usernames.md) and [dated evidence](../../SmartBord-AI/docs/Username_verification.md).
+
+Passed `yarn run check`, `yarn lint`, `yarn graphql:check`, three startup/socket checks and isolated production builds. Both independent strict-HTTPS username browser runs passed 25 grouped scenarios (nine auth, ten admin, six username), in development launcher/API bridge and production-build transports. New groups verify cancelled selection sends nothing, normalized confirmed persistence and no rename controls, uppercase username plus email login, collision/read-only unlock, real committed-but-lost response without replay, mobile no-overflow and credential-free storage. Production desktop account and mobile profile/chooser-heading screenshots were visually reviewed; viewport screenshots do not independently show the full scrolled mobile form. Browser controls and document width were checked automatically.
+
+Recovery regression after the login-label/error-text update: development and production each passed 20 grouped scenarios, run separately from username/admin mode. Broader Help/post/discussion browser suites were not rerun in this increment; only their shared login locators were updated. Backend full regression passed 103 unit, 18 HTTP, 135 real-MongoDB integration tests in nine suites, build/type/lint/schema, and Postman 83 requests/322 assertions.
+
+Failures retained: initial collision assertion matched Next's route announcer as well as the content alert; it was scoped to main. An attempted combined username/admin plus recovery run added three recovery accounts and violated the admin suite's fixed 27-account assertion. Both combined attempts failed, cleaned up their owned hosts/databases and preserved existing certificates; independent modes retain strict original assertions. A new early preflight rejects --username with --recovery before resource creation; its expected rejection was verified separately. This is test-mode incompatibility, not a relaxed application limit or assertion.
+
+All successful/failed browser runs used initially empty exact guarded disposable databases and trusted TLS with no certificate bypass. Owned hosts/browser contexts/connections and DBs were cleaned up, preserving user development servers and persistent local certificates/trust. No actual account login/choice/reset, real administrator fixture, application publication, native-phone acceptance, deployment or push occurred. Other browser engines and deployment-wide behavior remain unverified.
+
+Exact website file inventory:
+
+```text
+AGENTS.md
+README.md
+docs/Verification.md
+contracts/schema.graphql
+scripts/verify-admin.mjs
+scripts/verify-auth.mjs
+scripts/verify-community.mjs
+scripts/verify-discussion.mjs
+scripts/verify-help.mjs
+scripts/verify-recovery.mjs
+scripts/verify-username.mjs
+src/auth/client.ts
+src/auth/types.ts
+src/components/AuthForm.tsx
+src/components/UsernameChooser.tsx
+src/graphql/accounts.graphql
+src/graphql/generated.ts
+src/graphql/username.graphql
+src/pages/account.tsx
+src/styles/globals.css
+```
+
+Dependency locks are unchanged. No generated build output, credentials or lecture content is included in the focused local commit.

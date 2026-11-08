@@ -1,3 +1,4 @@
+import { UsernameChooser } from "@/components/UsernameChooser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Layout } from "@/components/Layout";
@@ -138,6 +139,12 @@ export default function AccountPage({
               <p className="profile-email">{account.email}</p>
               <dl>
                 <div>
+                  <dt>Username</dt>
+                  <dd data-account-username>
+                    {account.username || "Not chosen"}
+                  </dd>
+                </div>
+                <div>
                   <dt>Account role</dt>
                   <dd>
                     {account.role === "ADMIN" ? "Administrator" : "Member"}
@@ -159,6 +166,24 @@ export default function AccountPage({
                   </dd>
                 </div>
               </dl>
+              {!account.username && (
+                <UsernameChooser
+                  key={account.id}
+                  account={account}
+                  disabled={pending}
+                  onSaved={(updated) => {
+                    if (!leaving.current)
+                      setAccount((current) =>
+                        current?.id === updated.id ? updated : current,
+                      );
+                  }}
+                  invalidate={() => {
+                    ++generation.current;
+                    setAccount(null);
+                    void check();
+                  }}
+                />
+              )}
               {account.role === "ADMIN" && account.status === "ACTIVE" && (
                 <p>
                   <Link
